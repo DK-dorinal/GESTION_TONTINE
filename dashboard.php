@@ -118,6 +118,14 @@ try {
 } catch (PDOException $e) {
     $erreur = "Erreur lors de la récupération des données: " . $e->getMessage();
 }
+
+// Vérifier si on est sur mobile
+function isMobile()
+{
+    return preg_match("/(android|webos|iphone|ipad|ipod|blackberry|windows phone)/i", $_SERVER['HTTP_USER_AGENT']);
+}
+
+$is_mobile = isMobile();
 ?>
 
 <!DOCTYPE html>
@@ -399,6 +407,7 @@ try {
             display: flex;
             gap: 15px;
             align-items: center;
+            flex-wrap: wrap;
         }
 
         .date-badge {
@@ -895,16 +904,172 @@ try {
             animation: pulse 2s infinite;
         }
 
-        @keyframes pulse {
+        /* Boutons PWA */
+        .pwa-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
 
-            0%,
-            100% {
+        .install-btn,
+        .share-btn {
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: var(--transition);
+        }
+
+        .install-btn {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .install-btn:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
+        }
+
+        .share-btn {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+        }
+
+        .share-btn:hover {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .pwa-instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: white;
+            font-size: 0.85rem;
+        }
+
+        .pwa-instructions h4 {
+            margin-bottom: 10px;
+            color: var(--accent-gold);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pwa-steps {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .pwa-steps li {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pwa-steps i {
+            color: var(--accent-gold);
+            font-size: 0.9rem;
+        }
+
+        /* Mobile Install Banner */
+        .install-banner {
+            position: fixed;
+            bottom: 80px;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, var(--navy-blue), var(--dark-blue));
+            color: white;
+            padding: 15px 20px;
+            margin: 10px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            z-index: 1001;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            border: 2px solid var(--accent-gold);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
                 opacity: 1;
             }
+        }
 
-            50% {
-                opacity: 0.5;
-            }
+        .banner-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .banner-icon {
+            font-size: 28px;
+            color: var(--accent-gold);
+        }
+
+        .banner-text h4 {
+            font-size: 1rem;
+            margin-bottom: 2px;
+        }
+
+        .banner-text p {
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        .banner-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .banner-install-btn {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-light));
+            color: var(--navy-blue);
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .banner-install-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(212, 175, 55, 0.4);
+        }
+
+        .banner-close-btn {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
+            transition: var(--transition);
+        }
+
+        .banner-close-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
         }
 
         /* Empty State */
@@ -941,6 +1106,18 @@ try {
             animation: fadeInUp 0.5s ease-out;
         }
 
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
         /* Responsive Design */
         @media (max-width: 1200px) {
             .content-grid {
@@ -972,6 +1149,10 @@ try {
             .quick-actions {
                 grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             }
+
+            .install-banner {
+                bottom: 90px;
+            }
         }
 
         @media (max-width: 768px) {
@@ -986,6 +1167,11 @@ try {
             .header-top {
                 flex-direction: column;
                 align-items: flex-start;
+            }
+
+            .header-actions {
+                width: 100%;
+                justify-content: space-between;
             }
 
             .stats-grid {
@@ -1037,6 +1223,16 @@ try {
             .mobile-nav-icon {
                 font-size: 20px;
             }
+
+            .pwa-buttons {
+                flex-direction: column;
+            }
+
+            .install-btn,
+            .share-btn {
+                width: 100%;
+                justify-content: center;
+            }
         }
 
         @media (max-width: 480px) {
@@ -1050,11 +1246,6 @@ try {
 
             .quick-actions {
                 grid-template-columns: 1fr;
-            }
-
-            .header-actions {
-                width: 100%;
-                justify-content: space-between;
             }
 
             .date-badge,
@@ -1074,6 +1265,33 @@ try {
 
             .mobile-nav-text {
                 font-size: 8px;
+            }
+
+            .install-banner {
+                bottom: 85px;
+                margin: 5px;
+                padding: 12px 15px;
+            }
+
+            .banner-content {
+                gap: 10px;
+            }
+
+            .banner-icon {
+                font-size: 24px;
+            }
+
+            .banner-text h4 {
+                font-size: 0.9rem;
+            }
+
+            .banner-text p {
+                font-size: 0.75rem;
+            }
+
+            .banner-install-btn {
+                padding: 6px 12px;
+                font-size: 0.85rem;
             }
         }
     </style>
@@ -1122,8 +1340,31 @@ try {
                 </a>
             </nav>
 
+            <!-- Boutons d'installation PWA dans la sidebar -->
             <div class="sidebar-footer">
-                <a href="logout.php" class="logout-btn">
+                <?php if (!$is_mobile): ?>
+                    <div class="pwa-instructions" style="margin-bottom: 15px;">
+                        <h4><i class="fas fa-mobile-alt"></i> Version Mobile</h4>
+                        <ul class="pwa-steps">
+                            <li><i class="fas fa-download"></i> Cliquez sur "Installer"</li>
+                            <li><i class="fas fa-home"></i> Ajoutez à l'écran d'accueil</li>
+                            <li><i class="fas fa-rocket"></i> Utilisez comme application</li>
+                        </ul>
+                    </div>
+                <?php endif; ?>
+
+                <div class="pwa-buttons">
+                    <button class="install-btn" id="installButton">
+                        <i class="fas fa-download"></i>
+                        <span>Installer l'App</span>
+                    </button>
+                    <button class="share-btn" id="shareButton">
+                        <i class="fas fa-share-alt"></i>
+                        <span>Partager</span>
+                    </button>
+                </div>
+
+                <a href="logout.php" class="logout-btn" style="margin-top: 15px;">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Déconnexion</span>
                 </a>
@@ -1181,6 +1422,14 @@ try {
                     <div class="header-title">
                         <h1><?php echo $is_admin ? '🎯 Tableau de Bord Admin' : '👋 Mon Espace'; ?></h1>
                         <p>Bienvenue <strong><?php echo htmlspecialchars($user['prenom'] . ' ' . $user['nom']); ?></strong> !</p>
+                        <?php if ($is_mobile && !isset($_SESSION['hide_banner'])): ?>
+                            <div class="pwa-buttons" style="margin-top: 10px;">
+                                <button class="install-btn" id="headerInstallButton">
+                                    <i class="fas fa-download"></i>
+                                    <span>Télécharger l'App</span>
+                                </button>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <div class="header-actions">
                         <div class="date-badge">
@@ -1193,112 +1442,30 @@ try {
                     </div>
                 </div>
             </header>
-            <?php
-            // pwa-config.php
-            class PWAConfig
-            {
-                private static $instance = null;
-                private $config = [];
 
-                private function __construct()
-                {
-                    $this->config = [
-                        'name' => 'Gestion de Tontine',
-                        'short_name' => 'TontineApp',
-                        'theme_color' => '#0f1a3a',
-                        'background_color' => '#0f1a3a',
-                        'display' => 'standalone',
-                        'scope' => '/',
-                        'start_url' => '/dashboard.php',
-                        'icons' => [
-                            'src' => '/icons/icon-72x72.png',
-                            'sizes' => '192x192',
-                            'type' => 'image/png'
-                        ]
-                    ];
-                }
+            <!-- Mobile Install Banner -->
+            <?php if ($is_mobile && !isset($_SESSION['hide_banner'])): ?>
+                <div class="install-banner" id="installBanner">
+                    <div class="banner-content">
+                        <div class="banner-icon">
+                            <i class="fas fa-mobile-alt"></i>
+                        </div>
+                        <div class="banner-text">
+                            <h4>Installer l'application</h4>
+                            <p>Utilisez l'app hors ligne comme une vraie application</p>
+                        </div>
+                    </div>
+                    <div class="banner-actions">
+                        <button class="banner-install-btn" id="bannerInstallButton">
+                            Installer
+                        </button>
+                        <button class="banner-close-btn" id="closeBanner">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            <?php endif; ?>
 
-                public static function getInstance()
-                {
-                    if (self::$instance === null) {
-                        self::$instance = new self();
-                    }
-                    return self::$instance;
-                }
-
-                public function getConfig()
-                {
-                    return $this->config;
-                }
-
-                public function generateManifest()
-                {
-                    return json_encode($this->config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-                }
-
-                public function getMetaTags()
-                {
-                    $config = $this->config;
-                    $tags = "
-            <meta name=\"application-name\" content=\"{$config['name']}\">
-            <meta name=\"apple-mobile-web-app-capable\" content=\"yes\">
-            <meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\">
-            <meta name=\"apple-mobile-web-app-title\" content=\"{$config['short_name']}\">
-            <meta name=\"description\" content=\"Application de gestion de tontine\">
-            <meta name=\"format-detection\" content=\"telephone=no\">
-            <meta name=\"mobile-web-app-capable\" content=\"yes\">
-            <meta name=\"msapplication-TileColor\" content=\"{$config['theme_color']}\">
-            <meta name=\"msapplication-tap-highlight\" content=\"no\">
-            <meta name=\"theme-color\" content=\"{$config['theme_color']}\">
-            
-            <link rel=\"apple-touch-icon\" href=\"{$config['icons']['src']}\">
-            <link rel=\"icon\" type=\"image/png\" href=\"/icons/icon-192x192.png\">
-            <link rel=\"manifest\" href=\"/manifest.json\">
-            <link rel=\"shortcut icon\" href=\"/favicon.ico\">
-        ";
-
-                    return $tags;
-                }
-            }
-
-            // Fonction pour inclure les tags PWA dans vos pages
-            function includePWATags()
-            {
-                $pwa = PWAConfig::getInstance();
-                echo $pwa->getMetaTags();
-            }
-
-            // Fonction pour vérifier si l'utilisateur utilise l'app en PWA
-            function isPWA()
-            {
-                if (isset($_SERVER['HTTP_USER_AGENT'])) {
-                    $ua = strtolower($_SERVER['HTTP_USER_AGENT']);
-
-                    // Détecter les apps mobiles
-                    if (
-                        strpos($ua, 'wv') !== false ||
-                        strpos($ua, 'android') !== false ||
-                        strpos($ua, 'iphone') !== false ||
-                        strpos($ua, 'ipad') !== false
-                    ) {
-                        return true;
-                    }
-                }
-
-                // Vérifier via le header display-mode
-                if (isset($_SERVER['HTTP_SEC_FETCH_DEST']) && $_SERVER['HTTP_SEC_FETCH_DEST'] === 'document') {
-                    return true;
-                }
-
-                return false;
-            }
-
-            // Fonction pour obtenir la version du cache
-            function getCacheVersion()
-            {
-                return 'v1.0.' . date('Ymd');
-            }
-            ?>
             <!-- Quick Actions -->
             <div class="quick-actions fade-in" style="animation-delay: 0.1s">
                 <?php if ($is_admin): ?>
@@ -1446,7 +1613,7 @@ try {
 
                     <div class="stat-card">
                         <div class="stat-header">
-                            <div class="stat-icon" style="background: linear-gradient(135 deg, #fa709a, #fee140);">
+                            <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a, #fee140);">
                                 <i class="fas fa-money-bill-wave"></i>
                             </div>
                             <span class="stat-badge" style="background: #d1fae5; color: #065f46;">
@@ -1682,6 +1849,15 @@ try {
                             <span class="system-label">Dernière MAJ</span>
                             <span class="system-value"><?php echo date('d/m/Y'); ?></span>
                         </div>
+                        <div class="system-item">
+                            <span class="system-label">App Mobile</span>
+                            <span class="system-value">
+                                <button class="install-btn" style="padding: 5px 10px; font-size: 0.8rem;" id="systemInstallButton">
+                                    <i class="fas fa-download"></i>
+                                    Installer
+                                </button>
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1709,6 +1885,102 @@ try {
         // Mettre à jour la date chaque minute
         setInterval(updateDateTime, 60000);
 
+        // Variables pour PWA
+        let deferredPrompt;
+        let installBanner = document.getElementById('installBanner');
+        let installButtons = document.querySelectorAll('.install-btn, #bannerInstallButton, #headerInstallButton, #systemInstallButton');
+        let shareButton = document.getElementById('shareButton');
+        let closeBanner = document.getElementById('closeBanner');
+
+        // Gérer l'installation PWA
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+
+            // Afficher le banner sur mobile
+            if (installBanner) {
+                installBanner.style.display = 'flex';
+            }
+
+            // Activer tous les boutons d'installation
+            installButtons.forEach(button => {
+                button.style.display = 'flex';
+                button.addEventListener('click', installPWA);
+            });
+        });
+
+        // Fonction d'installation PWA
+        async function installPWA() {
+            if (!deferredPrompt) {
+                // Si pas d'événement beforeinstallprompt, donner des instructions
+                showNotification('Installation', 'Sur mobile: utilisez "Ajouter à l\'écran d\'accueil" dans le menu du navigateur.', 'info');
+                return;
+            }
+
+            deferredPrompt.prompt();
+            const {
+                outcome
+            } = await deferredPrompt.userChoice;
+
+            if (outcome === 'accepted') {
+                showNotification('Succès', 'Application installée avec succès!', 'success');
+                if (installBanner) installBanner.style.display = 'none';
+            } else {
+                showNotification('Annulé', 'Installation annulée.', 'info');
+            }
+
+            deferredPrompt = null;
+        }
+
+        // Fonction de partage
+        async function shareApp() {
+            const shareData = {
+                title: 'Gestion de Tontine',
+                text: 'Gérez vos tontines facilement avec cette application!',
+                url: window.location.href
+            };
+
+            try {
+                if (navigator.share) {
+                    await navigator.share(shareData);
+                } else {
+                    // Fallback pour les navigateurs sans Web Share API
+                    await navigator.clipboard.writeText(window.location.href);
+                    showNotification('Partagé!', 'Lien copié dans le presse-papier.', 'success');
+                }
+            } catch (err) {
+                console.log('Erreur de partage:', err);
+            }
+        }
+
+        // Fermer le banner
+        if (closeBanner) {
+            closeBanner.addEventListener('click', () => {
+                installBanner.style.display = 'none';
+                // Envoyer une requête pour mémoriser le choix
+                fetch('hide_banner.php')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            console.log('Banner caché pour cette session');
+                        }
+                    })
+                    .catch(err => console.error('Erreur:', err));
+            });
+        }
+
+        // Initialiser les boutons
+        if (shareButton) {
+            shareButton.addEventListener('click', shareApp);
+        }
+
+        // Vérifier si l'app est déjà installée
+        window.addEventListener('appinstalled', () => {
+            console.log('PWA installée');
+            if (installBanner) installBanner.style.display = 'none';
+            installButtons.forEach(button => button.style.display = 'none');
+        });
+
         // Gérer l'inactivité côté client (backup)
         let inactivityTimer;
         const TIMEOUT = 600000; // 10 minutes en millisecondes
@@ -1719,7 +1991,6 @@ try {
         }
 
         function logoutDueToInactivity() {
-            // Envoyer une requête au serveur pour déconnecter
             fetch('logout.php?timeout=1')
                 .then(() => {
                     window.location.href = 'index.php?expired=1';
@@ -1729,22 +2000,21 @@ try {
                 });
         }
 
-        // Événements de détection d'activité
+        // Détecter l'activité utilisateur
         document.addEventListener('DOMContentLoaded', () => {
             resetInactivityTimer();
 
-            // Détecter l'activité utilisateur
             ['mousedown', 'mousemove', 'keydown', 'scroll', 'click', 'touchstart'].forEach(event => {
                 document.addEventListener(event, resetInactivityTimer);
             });
 
-            // Animation de chargement des cartes avec délai progressif
+            // Animation des cartes
             const cards = document.querySelectorAll('.fade-in');
             cards.forEach((card, index) => {
                 card.style.animationDelay = `${index * 0.1}s`;
             });
 
-            // Effet de survol amélioré pour les cartes de stats
+            // Effets de survol
             const statCards = document.querySelectorAll('.stat-card');
             statCards.forEach(card => {
                 card.addEventListener('mouseenter', function() {
@@ -1772,221 +2042,85 @@ try {
             const actionCards = document.querySelectorAll('.action-card');
             actionCards.forEach(card => {
                 card.addEventListener('click', function(e) {
-                    // Empêcher le clic multiple rapide
                     if (this.classList.contains('loading')) {
                         e.preventDefault();
                         return;
                     }
 
-                    // Ajouter un effet de chargement
                     this.classList.add('loading');
                     const icon = this.querySelector('.action-icon i');
                     const originalIcon = icon.className;
-
-                    // Changer l'icône temporairement
                     icon.className = 'fas fa-spinner fa-spin';
 
-                    // Restaurer après 1.5 secondes
                     setTimeout(() => {
                         this.classList.remove('loading');
                         icon.className = originalIcon;
                     }, 1500);
                 });
             });
-
-            // Gestion des couleurs dynamiques pour les badges de type
-            const typeBadges = document.querySelectorAll('.type-badge');
-            const typeColors = {
-                'membre': 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                'tontine': 'linear-gradient(135deg, #f59e0b, #d97706)',
-                'seance': 'linear-gradient(135deg, #10b981, #059669)',
-                'cotisation': 'linear-gradient(135deg, #a855f7, #9333ea)',
-                'credit': 'linear-gradient(135deg, #ef4444, #dc2626)'
-            };
-
-            typeBadges.forEach(badge => {
-                const badgeType = badge.textContent.toLowerCase();
-                if (typeColors[badgeType]) {
-                    badge.style.background = typeColors[badgeType];
-                }
-            });
-
-            // Initialiser le tooltip pour les statuts
-            const statusBadges = document.querySelectorAll('.status-badge');
-            statusBadges.forEach(badge => {
-                const status = badge.textContent.trim().toLowerCase();
-                badge.title = `Statut: ${status === 'actif' ? 'Membre actif' : 'Membre inactif'}`;
-            });
-
-            // Gestion responsive pour le tableau
-            function handleTableResponsive() {
-                const tables = document.querySelectorAll('table');
-                const isMobile = window.innerWidth <= 768;
-
-                tables.forEach(table => {
-                    if (isMobile) {
-                        table.classList.add('mobile-view');
-                        // Ajouter des attributs data-label pour les cellules
-                        const headers = table.querySelectorAll('th');
-                        const rows = table.querySelectorAll('tbody tr');
-
-                        headers.forEach((header, index) => {
-                            const headerText = header.textContent;
-                            rows.forEach(row => {
-                                const cell = row.children[index];
-                                if (cell) {
-                                    cell.setAttribute('data-label', headerText);
-                                }
-                            });
-                        });
-                    } else {
-                        table.classList.remove('mobile-view');
-                    }
-                });
-            }
-
-            // Initialiser et surveiller les changements de taille
-            handleTableResponsive();
-            window.addEventListener('resize', handleTableResponsive);
-
-            // Notification système pour les mises à jour importantes
-            function checkForUpdates() {
-                // Simuler une vérification de mise à jour
-                const lastUpdate = localStorage.getItem('lastUpdateCheck');
-                const now = new Date().getTime();
-
-                if (!lastUpdate || (now - lastUpdate) > 3600000) { // Toutes les heures
-                    localStorage.setItem('lastUpdateCheck', now.toString());
-
-                    // Afficher une notification discrète
-                    showNotification('Système à jour', 'Votre tableau de bord est à jour.', 'success');
-                }
-            }
-
-            // Fonction pour afficher les notifications
-            function showNotification(title, message, type = 'info') {
-                const notification = document.createElement('div');
-                notification.className = `notification ${type}`;
-                notification.innerHTML = `
-                    <div class="notification-icon">
-                        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
-                    </div>
-                    <div class="notification-content">
-                        <strong>${title}</strong>
-                        <p>${message}</p>
-                    </div>
-                    <button class="notification-close">
-                        <i class="fas fa-times"></i>
-                    </button>
-                `;
-
-                notification.style.cssText = `
-                    position: fixed;
-                    top: 20px;
-                    right: 20px;
-                    background: white;
-                    padding: 15px;
-                    border-radius: 10px;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-                    display: flex;
-                    align-items: center;
-                    gap: 15px;
-                    z-index: 9999;
-                    animation: slideIn 0.3s ease;
-                    border-left: 4px solid ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
-                    max-width: 350px;
-                `;
-
-                document.body.appendChild(notification);
-
-                // Fermer la notification
-                const closeBtn = notification.querySelector('.notification-close');
-                closeBtn.addEventListener('click', () => {
-                    notification.style.animation = 'slideOut 0.3s ease';
-                    setTimeout(() => notification.remove(), 300);
-                });
-
-                // Auto-fermer après 5 secondes
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.style.animation = 'slideOut 0.3s ease';
-                        setTimeout(() => notification.remove(), 300);
-                    }
-                }, 5000);
-            }
-
-            // Ajouter les styles d'animation pour les notifications
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes slideIn {
-                    from {
-                        transform: translateX(100%);
-                        opacity: 0;
-                    }
-                    to {
-                        transform: translateX(0);
-                        opacity: 1;
-                    }
-                }
-                @keyframes slideOut {
-                    from {
-                        transform: translateX(0);
-                        opacity: 1;
-                    }
-                    to {
-                        transform: translateX(100%);
-                        opacity: 0;
-                    }
-                }
-                .notification-close {
-                    background: none;
-                    border: none;
-                    color: #6b7280;
-                    cursor: pointer;
-                    font-size: 14px;
-                    padding: 5px;
-                    border-radius: 50%;
-                    transition: all 0.2s;
-                }
-                .notification-close:hover {
-                    background: #f3f4f6;
-                    color: #374151;
-                }
-                .notification-icon {
-                    font-size: 20px;
-                    color: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
-                }
-            `;
-            document.head.appendChild(style);
-
-            // Vérifier les mises à jour après 3 secondes
-            setTimeout(checkForUpdates, 3000);
-
-            // Initialiser les graphiques si nécessaire (pour les futures versions)
-            function initCharts() {
-                // Cette fonction peut être étendue pour initialiser des graphiques
-                // avec Chart.js ou une autre bibliothèque
-                console.log('Initialisation des graphiques...');
-            }
-
-            // Démarrer les graphiques
-            initCharts();
         });
 
-        // Gestion de la déconnexion propre
+        // Fonction pour afficher les notifications
+        function showNotification(title, message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <div class="notification-icon">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+                </div>
+                <div class="notification-content">
+                    <strong>${title}</strong>
+                    <p>${message}</p>
+                </div>
+                <button class="notification-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: white;
+                padding: 15px;
+                border-radius: 10px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                z-index: 9999;
+                animation: slideIn 0.3s ease;
+                border-left: 4px solid ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
+                max-width: 350px;
+            `;
+
+            document.body.appendChild(notification);
+
+            const closeBtn = notification.querySelector('.notification-close');
+            closeBtn.addEventListener('click', () => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            });
+
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.style.animation = 'slideOut 0.3s ease';
+                    setTimeout(() => notification.remove(), 300);
+                }
+            }, 5000);
+        }
+
+        // Gérer la déconnexion
         document.querySelectorAll('a[href="logout.php"]').forEach(link => {
             link.addEventListener('click', function(e) {
                 e.preventDefault();
 
-                // Afficher une confirmation
                 if (confirm('Voulez-vous vraiment vous déconnecter ?')) {
-                    // Ajouter un effet de chargement
                     const icon = this.querySelector('i');
                     if (icon) {
                         const originalClass = icon.className;
                         icon.className = 'fas fa-spinner fa-spin';
 
-                        // Rediriger après un délai
                         setTimeout(() => {
                             window.location.href = 'logout.php';
                         }, 500);
@@ -2004,26 +2138,313 @@ try {
 
         window.addEventListener('offline', () => {
             showNotification('Hors ligne', 'Vérifiez votre connexion internet.', 'error');
-        });
+        }); 
+            // Script d'installation PWA - Version corrigée
+            (function() {
+                'use strict';
 
-        // Préchargement des pages fréquemment visitées
-        function preloadPages() {
-            if (navigator.connection && navigator.connection.saveData) {
-                return; // Ne pas précharger en mode économie de données
+                let deferredPrompt = null;
+                let isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                let isAndroid = /Android/.test(navigator.userAgent);
+                let isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                    window.navigator.standalone ||
+                    document.referrer.includes('android-app://');
+
+                console.log('PWA Debug:', {
+                    isIOS,
+                    isAndroid,
+                    isStandalone,
+                    beforeinstallprompt: window['beforeinstallprompt'] ? 'exists' : 'missing',
+                    standalone: window.matchMedia('(display-mode: standalone)').matches,
+                    navigatorStandalone: window.navigator.standalone
+                });
+
+                // Fonction pour afficher les notifications
+                function showNotification(title, message, type = 'info') {
+                    const notification = document.createElement('div');
+                    notification.className = `notification ${type}`;
+                    notification.innerHTML = `
+            <div class="notification-icon">
+                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+            </div>
+            <div class="notification-content">
+                <strong>${title}</strong>
+                <p>${message}</p>
+            </div>
+            <button class="notification-close">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+
+                    notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 9999;
+            animation: slideIn 0.3s ease;
+            border-left: 4px solid ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
+            max-width: 350px;
+        `;
+
+                    document.body.appendChild(notification);
+
+                    const closeBtn = notification.querySelector('.notification-close');
+                    closeBtn.addEventListener('click', () => {
+                        notification.remove();
+                    });
+
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            notification.remove();
+                        }
+                    }, 5000);
+                }
+
+                // Fonction pour afficher le bouton d'installation
+                function showInstallButton() {
+                    console.log('showInstallButton called');
+                    const installButtons = document.querySelectorAll('.install-btn, #installButton, #headerInstallButton, #systemInstallButton, #bannerInstallButton');
+
+                    installButtons.forEach(button => {
+                        console.log('Found button:', button.id || button.className);
+                        button.style.display = 'flex';
+                        button.disabled = false;
+
+                        // Retirer les anciens écouteurs
+                        button.removeEventListener('click', installPWA);
+                        // Ajouter le nouvel écouteur
+                        button.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            console.log('Install button clicked');
+                            installPWA();
+                        });
+                    });
+
+                    // Afficher le banner mobile
+                    const banner = document.getElementById('installBanner');
+                    if (banner && !isStandalone && (isIOS || isAndroid)) {
+                        console.log('Showing banner');
+                        banner.style.display = 'flex';
+                    }
+                }
+
+                // Fonction d'installation
+                async function installPWA() {
+                    console.log('installPWA called, deferredPrompt:', deferredPrompt);
+
+                    if (isIOS) {
+                        // Instructions pour iOS
+                        showNotification('Installation sur iOS',
+                            '1. Appuyez sur le bouton "Partager" (icône carrée avec flèche)<br>' +
+                            '2. Faites défiler vers le bas<br>' +
+                            '3. Sélectionnez "Sur l\'écran d\'accueil"<br>' +
+                            '4. Appuyez sur "Ajouter"',
+                            'info');
+                        return;
+                    }
+
+                    if (!deferredPrompt) {
+                        // Instructions pour Android/Desktop
+                        showNotification('Installation',
+                            'Utilisez le menu de votre navigateur (⋮ ou ...) et sélectionnez:<br>' +
+                            '- "Installer l\'application" (Chrome)<br>' +
+                            '- "Installer le site" (Firefox)<br>' +
+                            '- "Ajouter à l\'écran d\'accueil" (Safari)',
+                            'info');
+                        return;
+                    }
+
+                    try {
+                        deferredPrompt.prompt();
+                        const {
+                            outcome
+                        } = await deferredPrompt.userChoice;
+
+                        if (outcome === 'accepted') {
+                            console.log('User accepted the install prompt');
+                            showNotification('Succès', 'Application installée avec succès!', 'success');
+                            hideInstallButton();
+                        } else {
+                            console.log('User dismissed the install prompt');
+                            showNotification('Annulé', 'Installation annulée.', 'info');
+                        }
+
+                        deferredPrompt = null;
+                        hideInstallButton();
+
+                    } catch (error) {
+                        console.error('Installation error:', error);
+                        showNotification('Erreur', 'Impossible d\'installer l\'application.', 'error');
+                    }
+                }
+
+                function hideInstallButton() {
+                    const installButtons = document.querySelectorAll('.install-btn, #installButton, #headerInstallButton, #systemInstallButton, #bannerInstallButton');
+                    installButtons.forEach(button => {
+                        button.style.display = 'none';
+                    });
+
+                    const banner = document.getElementById('installBanner');
+                    if (banner) {
+                        banner.style.display = 'none';
+                    }
+                }
+
+                // Fonction de partage
+                async function shareApp() {
+                    const shareData = {
+                        title: 'Gestion de Tontine',
+                        text: 'Gérez vos tontines facilement avec cette application!',
+                        url: window.location.origin
+                    };
+
+                    try {
+                        if (navigator.share) {
+                            await navigator.share(shareData);
+                        } else {
+                            await navigator.clipboard.writeText(window.location.href);
+                            showNotification('Partagé!', 'Lien copié dans le presse-papier.', 'success');
+                        }
+                    } catch (err) {
+                        console.log('Erreur de partage:', err);
+                    }
+                }
+
+                // Initialiser les boutons
+                document.addEventListener('DOMContentLoaded', function() {
+                    console.log('DOM loaded, initializing PWA buttons');
+
+                    // Attacher l'écouteur au bouton de partage
+                    const shareButton = document.getElementById('shareButton');
+                    if (shareButton) {
+                        shareButton.addEventListener('click', shareApp);
+                    }
+
+                    // Attacher l'écouteur au bouton de fermeture du banner
+                    const closeBanner = document.getElementById('closeBanner');
+                    if (closeBanner) {
+                        closeBanner.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            const banner = document.getElementById('installBanner');
+                            if (banner) {
+                                banner.style.display = 'none';
+                            }
+                        });
+                    }
+
+                    // Vérifier si l'app est déjà installée
+                    if (isStandalone) {
+                        console.log('App already installed, hiding buttons');
+                        hideInstallButton();
+                    }
+                });
+
+                // Écouter l'événement d'installation
+                window.addEventListener('beforeinstallprompt', function(e) {
+                    console.log('beforeinstallprompt event fired!');
+                    e.preventDefault();
+                    deferredPrompt = e;
+                    showInstallButton();
+                });
+
+                // Détecter l'installation réussie
+                window.addEventListener('appinstalled', function() {
+                    console.log('PWA was installed');
+                    deferredPrompt = null;
+                    hideInstallButton();
+                    showNotification('Installation réussie',
+                        'L\'application a été installée avec succès! Vous pouvez maintenant l\'utiliser hors ligne.',
+                        'success');
+                });
+
+                // Détecter si nous sommes en HTTPS (requis pour PWA)
+                if (window.location.protocol !== 'https:') {
+                    console.warn('PWA requires HTTPS for installation');
+                    showNotification('Attention',
+                        'Pour installer l\'application, vous devez être en HTTPS. L\'application fonctionnera toujours, mais certaines fonctionnalités PWA seront limitées.',
+                        'warning');
+                }
+
+                // Ajouter des styles CSS pour les animations
+                const style = document.createElement('style');
+                style.textContent = `
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
             }
-
-            const pagesToPreload = <?php echo $is_admin ? "['membre.php', 'tontine.php', 'seance.php']" : "['cotisation.php', 'seances.php', 'credit.php']"; ?>;
-
-            pagesToPreload.forEach(page => {
-                const link = document.createElement('link');
-                link.rel = 'prefetch';
-                link.href = page;
-                document.head.appendChild(link);
-            });
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        .notification-close {
+            background: none;
+            border: none;
+            color: #6b7280;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 5px;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+        .notification-close:hover {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        .notification-icon {
+            font-size: 20px;
+        }
+        .notification.success .notification-icon {
+            color: #10b981;
+        }
+        .notification.info .notification-icon {
+            color: #3b82f6;
+        }
+        .notification.warning .notification-icon {
+            color: #f59e0b;
+        }
+        .notification.error .notification-icon {
+            color: #ef4444;
+        }
+    `;
+                document.head.appendChild(style);
 
-        // Précharger après 2 secondes
-        setTimeout(preloadPages, 2000);
+            })();
+    </script>
+
+    <!-- Ajouter ceci pour tester rapidement -->
+    <script>
+        // Tester manuellement si les boutons fonctionnent
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Testing PWA functionality...');
+
+            // Tester le clic sur tous les boutons d'installation
+            const installButtons = document.querySelectorAll('[class*="install"], [id*="Install"]');
+            installButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    console.log('Button clicked:', this.id || this.className);
+                });
+            });
+        });
+    </script>
     </script>
 </body>
 
