@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hors Ligne | Gestion de Tontine</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f1a3a 0%, #1a2b55 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .offline-container {
+            max-width: 600px;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .offline-icon {
+            font-size: 80px;
+            margin-bottom: 30px;
+            color: #e0f2fe;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: #d4af37;
+        }
+        
+        p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            color: #e2e8f0;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .feature {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .feature i {
+            font-size: 24px;
+            color: #d4af37;
+            margin-bottom: 10px;
+        }
+        
+        .feature h3 {
+            font-size: 1rem;
+            margin-bottom: 5px;
+        }
+        
+        .feature p {
+            font-size: 0.9rem;
+            margin-bottom: 0;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        
+        button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .retry-btn {
+            background: linear-gradient(135deg, #d4af37, #e6c34d);
+            color: #0f1a3a;
+        }
+        
+        .retry-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.4);
+        }
+        
+        .home-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .home-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-3px);
+        }
+        
+        .connection-status {
+            margin-top: 30px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .connection-dot {
+            width: 10px;
+            height: 10px;
+            background: #ef4444;
+            border-radius: 50%;
+            animation: blink 1.5s infinite;
+        }
+        
+        .connection-dot.connected {
+            background: #10b981;
+            animation: none;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        @media (max-width: 768px) {
+            .offline-container {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .features {
+                grid-template-columns: 1fr;
+            }
+            
+            button {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">
+            <i class="fas fa-wifi-slash"></i>
+        </div>
+        
+        <h1>Vous êtes hors ligne</h1>
+        
+        <p>
+            La connexion internet est indisponible. Certaines fonctionnalités sont limitées.
+            Vous pouvez continuer à consulter les données récemment consultées.
+        </p>
+        
+        <div class="features">
+            <div class="feature">
+                <i class="fas fa-chart-line"></i>
+                <h3>Tableau de bord</h3>
+                <p>Consultation des statistiques</p>
+            </div>
+            <div class="feature">
+                <i class="fas fa-file-invoice"></i>
+                <h3>Consultation</h3>
+                <p>Données récentes accessibles</p>
+            </div>
+            <div class="feature">
+                <i class="fas fa-sync-alt"></i>
+                <h3>Synchronisation</h3>
+                <p>Automatique en ligne</p>
+            </div>
+        </div>
+        
+        <div class="buttons">
+            <button class="retry-btn" onclick="retryConnection()">
+                <i class="fas fa-redo"></i>
+                Réessayer la connexion
+            </button>
+            
+            <button class="home-btn" onclick="goToDashboard()">
+                <i class="fas fa-home"></i>
+                Tableau de bord
+            </button>
+        </div>
+        
+        <div class="connection-status">
+            <div class="connection-dot" id="connectionDot"></div>
+            <span id="connectionStatus">En attente de connexion...</span>
+        </div>
+    </div>
+
+    <script>
+        // Vérifier l'état de la connexion
+        function updateConnectionStatus() {
+            const connectionDot = document.getElementById('connectionDot');
+            const statusText = document.getElementById('connectionStatus');
+            
+            if (navigator.onLine) {
+                connectionDot.classList.add('connected');
+                statusText.textContent = 'Connecté ! Redirection...';
+                
+                // Rediriger vers le tableau de bord après 2 secondes
+                setTimeout(() => {
+                    window.location.href = '/dashboard.php';
+                }, 2000);
+            } else {
+                connectionDot.classList.remove('connected');
+                statusText.textContent = 'Hors ligne';
+            }
+        }
+        
+        // Réessayer la connexion
+        function retryConnection() {
+            updateConnectionStatus();
+            if (navigator.onLine) {
+                window.location.reload();
+            }
+        }
+        
+        // Aller au tableau de bord (mode hors ligne)
+        function goToDashboard() {
+            // Essayer de charger le dashboard depuis le cache
+            if ('caches' in window) {
+                caches.match('/dashboard.php')
+                    .then(response => {
+                        if (response) {
+                            window.location.href = '/dashboard.php';
+                        } else {
+                            alert('Le tableau de bord n\'est pas disponible hors ligne.');
+                        }
+                    });
+            }
+        }
+        
+        // Écouter les changements de connexion
+        window.addEventListener('online', updateConnectionStatus);
+        window.addEventListener('offline', updateConnectionStatus);
+        
+        // Initialiser l'état de connexion
+        updateConnectionStatus();
+        
+        // Vérifier périodiquement
+        setInterval(updateConnectionStatus, 5000);
+    </script>
+</body>
+</html>
