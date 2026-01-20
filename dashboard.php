@@ -22,7 +22,7 @@ if (!$user) {
 }
 
 // Vérifier l'inactivité (10 minutes)
-$timeout = 600;
+$timeout = 1200;
 if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $timeout)) {
     session_unset();
     session_destroy();
@@ -137,13 +137,6 @@ $is_mobile = isMobile();
     <title>Dashboard | Gestion de Tontine</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#0f1a3a">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="TontineApp">
-    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
-    <link rel="icon" type="image/png" href="/icons/icon-192x192.png">
     <style>
         :root {
             --navy-blue: #0f1a3a;
@@ -173,49 +166,45 @@ $is_mobile = isMobile();
             font-family: 'Poppins', sans-serif;
             background: linear-gradient(135deg, #0f1a3a 0%, #1a2b55 100%);
             min-height: 100vh;
-            position: relative;
+            color: var(--text-dark);
+            width: 100%;
             overflow-x: hidden;
         }
 
-        /* Background Pattern */
-        body::before {
-            content: "";
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="none"/><path d="M0,0 L100,0 L100,100" stroke="rgba(255,255,255,0.03)" stroke-width="1"/></svg>');
-            background-size: 50px 50px;
-            opacity: 0.3;
-            z-index: 0;
-            pointer-events: none;
+        /* ==================== LAYOUT FLEXBOX ==================== */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+            width: 100%;
         }
 
-        /* Desktop Sidebar */
-        .sidebar-desktop {
-            position: fixed;
-            left: 0;
-            top: 0;
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
             width: 280px;
-            height: 100vh;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="none"/><path d="M0,0 L100,0 L100,100" stroke="rgba(255,255,255,0.03)" stroke-width="1"/></svg>');
+            background: linear-gradient(135deg, rgba(15, 26, 58, 0.95), rgba(26, 43, 85, 0.95));
             backdrop-filter: blur(10px);
+            padding: 20px 0;
+            position: fixed;
+            height: 100vh;
             z-index: 1000;
-            overflow-y: auto;
-            transition: var(--transition);
             box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
         }
 
-        .sidebar-logo {
-            padding: 30px 20px;
+        .sidebar-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .logo-container {
+        .logo {
             display: flex;
             align-items: center;
             gap: 15px;
+            margin-bottom: 20px;
         }
 
         .logo-icon {
@@ -228,7 +217,11 @@ $is_mobile = isMobile();
             justify-content: center;
             color: white;
             font-size: 24px;
-            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+        }
+
+        .logo-text {
+            display: flex;
+            flex-direction: column;
         }
 
         .logo-text h2 {
@@ -243,11 +236,15 @@ $is_mobile = isMobile();
             font-size: 0.75rem;
         }
 
-        .sidebar-nav {
-            padding: 20px 15px;
+        /* Navigation */
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            flex: 1;
         }
 
-        .nav-link {
+        .nav-item {
             display: flex;
             align-items: center;
             gap: 12px;
@@ -259,32 +256,32 @@ $is_mobile = isMobile();
             transition: var(--transition);
             font-size: 0.95rem;
             font-weight: 500;
-            position: relative;
-            overflow: hidden;
         }
 
-        .nav-link:hover {
+        .nav-item:hover,
+        .nav-item.active {
             background: rgba(212, 175, 55, 0.2);
             color: white;
             transform: translateX(5px);
         }
 
-        .nav-link.active {
+        .nav-item.active {
             background: rgba(212, 175, 55, 0.3);
-            color: white;
             border-left: 3px solid var(--accent-gold);
         }
 
-        .nav-link i {
-            font-size: 1.1rem;
+        .nav-item i {
             width: 24px;
             text-align: center;
+            font-size: 1.1rem;
         }
 
+        /* Sidebar footer */
         .sidebar-footer {
+            display: flex;
+            flex-direction: column;
             padding: 20px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
-            margin-top: 20px;
         }
 
         .logout-btn {
@@ -305,97 +302,40 @@ $is_mobile = isMobile();
             color: white;
         }
 
-        /* Mobile Bottom Navigation */
-        .mobile-nav {
-            display: none;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(180deg, #0f1a3a 0%, #1a2b55 100%);
-            backdrop-filter: blur(10px);
-            border-top: 2px solid var(--accent-gold);
-            z-index: 1000;
-            height: 70px;
-            padding: 0 10px;
-            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
-        }
-
-        .mobile-nav-container {
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            height: 100%;
-            max-width: 600px;
-            margin: 0 auto;
-        }
-
-        .mobile-nav-item {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 8px 4px;
-            color: rgba(255, 255, 255, 0.6);
-            text-decoration: none;
-            transition: var(--transition);
-            border-radius: 8px;
-            min-width: 60px;
-            max-width: 80px;
-        }
-
-        .mobile-nav-item:hover,
-        .mobile-nav-item.active {
-            color: var(--accent-gold);
-            background: rgba(212, 175, 55, 0.15);
-        }
-
-        .mobile-nav-icon {
-            font-size: 22px;
-            margin-bottom: 4px;
-        }
-
-        .mobile-nav-text {
-            font-size: 10px;
-            font-weight: 600;
-            text-align: center;
-        }
-
         /* Main Content */
         .main-content {
+            flex: 1;
             margin-left: 280px;
-            min-height: 100vh;
-            position: relative;
-            z-index: 1;
-            transition: var(--transition);
-        }
-
-        .content-wrapper {
             padding: 30px;
-            max-width: 1400px;
-            margin: 0 auto;
+            width: calc(100% - 280px);
         }
 
         /* Header */
-        .page-header {
+        .header {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
             margin-bottom: 30px;
         }
 
         .header-top {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             flex-wrap: wrap;
             gap: 20px;
-            margin-bottom: 20px;
+        }
+
+        .header-title {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
         }
 
         .header-title h1 {
             font-size: 2rem;
             font-weight: 700;
             color: white;
-            margin-bottom: 5px;
         }
 
         .header-title p {
@@ -411,15 +351,15 @@ $is_mobile = isMobile();
         }
 
         .date-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
             padding: 10px 16px;
             border-radius: 10px;
             color: white;
             font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
@@ -437,23 +377,31 @@ $is_mobile = isMobile();
 
         /* Quick Actions */
         .quick-actions {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 20px;
             margin-bottom: 30px;
         }
 
         .action-card {
+            flex: 1;
+            min-width: 200px;
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border-radius: 16px;
             padding: 25px;
             text-align: center;
             transition: var(--transition);
-            border: 2px solid transparent;
             text-decoration: none;
+            border: 2px solid transparent;
             position: relative;
             overflow: hidden;
+        }
+
+        .action-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-gold);
+            box-shadow: 0 15px 40px rgba(212, 175, 55, 0.3);
         }
 
         .action-card::before {
@@ -466,12 +414,6 @@ $is_mobile = isMobile();
             background: linear-gradient(90deg, var(--accent-gold), var(--light-blue));
             transform: scaleX(0);
             transition: transform 0.3s ease;
-        }
-
-        .action-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--accent-gold);
-            box-shadow: 0 15px 40px rgba(212, 175, 55, 0.3);
         }
 
         .action-card:hover::before {
@@ -490,7 +432,6 @@ $is_mobile = isMobile();
             font-size: 26px;
             color: white;
             transition: var(--transition);
-            box-shadow: 0 8px 20px rgba(45, 74, 138, 0.3);
         }
 
         .action-card:hover .action-icon {
@@ -510,44 +451,28 @@ $is_mobile = isMobile();
             color: var(--text-light);
         }
 
-        /* Stats Grid */
+        /* Statistics Grid */
         .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 20px;
             margin-bottom: 30px;
         }
 
         .stat-card {
+            flex: 1;
+            min-width: 250px;
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border-radius: 16px;
             padding: 25px;
             transition: var(--transition);
-            position: relative;
-            overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--accent-gold), var(--light-blue));
-            transform: scaleX(0);
-            transition: transform 0.3s ease;
         }
 
         .stat-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .stat-card:hover::before {
-            transform: scaleX(1);
         }
 
         .stat-header {
@@ -601,10 +526,24 @@ $is_mobile = isMobile();
 
         /* Content Grid */
         .content-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
+            display: flex;
             gap: 25px;
             margin-bottom: 30px;
+        }
+
+        .main-column {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .sidebar-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            max-width: 400px;
         }
 
         .content-card {
@@ -651,13 +590,11 @@ $is_mobile = isMobile();
         .table-container {
             overflow-x: auto;
             border-radius: 12px;
-            -webkit-overflow-scrolling: touch;
         }
 
         table {
             width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
+            border-collapse: collapse;
             min-width: 600px;
         }
 
@@ -676,8 +613,8 @@ $is_mobile = isMobile();
         }
 
         tbody tr {
-            transition: var(--transition);
             border-bottom: 1px solid #e2e8f0;
+            transition: var(--transition);
         }
 
         tbody tr:hover {
@@ -698,7 +635,7 @@ $is_mobile = isMobile();
             display: inline-block;
         }
 
-        /* Member Cards */
+        /* Member List */
         .member-list {
             display: flex;
             flex-direction: column;
@@ -713,7 +650,6 @@ $is_mobile = isMobile();
             background: linear-gradient(135deg, rgba(212, 175, 55, 0.05), rgba(58, 95, 192, 0.05));
             border-radius: 12px;
             transition: var(--transition);
-            border: 1px solid rgba(0, 0, 0, 0.05);
         }
 
         .member-item:hover {
@@ -732,7 +668,6 @@ $is_mobile = isMobile();
             color: white;
             font-weight: 700;
             font-size: 1.2rem;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
             flex-shrink: 0;
         }
 
@@ -756,10 +691,6 @@ $is_mobile = isMobile();
             color: var(--text-light);
         }
 
-        .member-phone i {
-            color: var(--accent-gold);
-        }
-
         .status-badge {
             padding: 4px 10px;
             border-radius: 20px;
@@ -768,7 +699,7 @@ $is_mobile = isMobile();
             white-space: nowrap;
         }
 
-        /* Tontine Cards */
+        /* Tontine List */
         .tontine-list {
             display: flex;
             flex-direction: column;
@@ -791,7 +722,7 @@ $is_mobile = isMobile();
         .tontine-header {
             display: flex;
             justify-content: space-between;
-            align-items: start;
+            align-items: flex-start;
             margin-bottom: 12px;
         }
 
@@ -809,7 +740,6 @@ $is_mobile = isMobile();
             color: var(--medium-blue);
             font-size: 0.85rem;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            white-space: nowrap;
         }
 
         .tontine-date {
@@ -818,38 +748,7 @@ $is_mobile = isMobile();
             margin-bottom: 12px;
         }
 
-        .tontine-date i {
-            color: var(--accent-gold);
-            margin-right: 5px;
-        }
-
-        .tontine-gain {
-            padding: 12px;
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1));
-            border-radius: 8px;
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .gain-label {
-            font-size: 0.8rem;
-            color: #047857;
-            font-weight: 700;
-        }
-
-        .gain-label i {
-            margin-right: 5px;
-        }
-
-        .gain-amount {
-            font-size: 0.95rem;
-            font-weight: 800;
-            color: #065f46;
-        }
-
-        /* System Info Card */
+        /* System Card */
         .system-card {
             background: linear-gradient(135deg, var(--navy-blue), var(--dark-blue));
             color: white;
@@ -879,197 +778,55 @@ $is_mobile = isMobile();
             border-bottom: none;
         }
 
-        .system-label {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 0.9rem;
-        }
-
-        .system-value {
-            font-weight: 700;
-            font-size: 0.9rem;
-        }
-
-        .status-online {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: #10b981;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            background: #10b981;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        /* Boutons PWA */
-        .pwa-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
-
-        .install-btn,
-        .share-btn {
-            padding: 10px 15px;
-            border-radius: 8px;
-            border: none;
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: var(--transition);
-        }
-
-        .install-btn {
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-        }
-
-        .install-btn:hover {
-            background: linear-gradient(135deg, #059669, #047857);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
-        }
-
-        .share-btn {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: white;
-        }
-
-        .share-btn:hover {
-            background: linear-gradient(135deg, #2563eb, #1d4ed8);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4);
-        }
-
-        .pwa-instructions {
-            margin-top: 20px;
-            padding: 15px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            color: white;
-            font-size: 0.85rem;
-        }
-
-        .pwa-instructions h4 {
-            margin-bottom: 10px;
-            color: var(--accent-gold);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .pwa-steps {
-            list-style-type: none;
-            padding-left: 0;
-        }
-
-        .pwa-steps li {
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .pwa-steps i {
-            color: var(--accent-gold);
-            font-size: 0.9rem;
-        }
-
-        /* Mobile Install Banner */
-        .install-banner {
+        /* Mobile Navigation */
+        .mobile-nav {
+            display: none;
             position: fixed;
-            bottom: 80px;
+            bottom: 0;
             left: 0;
             right: 0;
-            background: linear-gradient(135deg, var(--navy-blue), var(--dark-blue));
-            color: white;
-            padding: 15px 20px;
-            margin: 10px;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            z-index: 1001;
-            display: none;
-            align-items: center;
-            justify-content: space-between;
-            border: 2px solid var(--accent-gold);
-            animation: slideUp 0.3s ease;
+            background: linear-gradient(180deg, #0f1a3a 0%, #1a2b55 100%);
+            backdrop-filter: blur(10px);
+            border-top: 2px solid var(--accent-gold);
+            z-index: 1000;
+            height: 70px;
+            padding: 0 10px;
         }
 
-        @keyframes slideUp {
-            from {
-                transform: translateY(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        .banner-content {
+        .mobile-nav-container {
             display: flex;
+            justify-content: space-around;
             align-items: center;
-            gap: 15px;
+            height: 100%;
         }
 
-        .banner-icon {
-            font-size: 28px;
-            color: var(--accent-gold);
-        }
-
-        .banner-text h4 {
-            font-size: 1rem;
-            margin-bottom: 2px;
-        }
-
-        .banner-text p {
-            font-size: 0.8rem;
-            opacity: 0.8;
-        }
-
-        .banner-actions {
+        .mobile-nav-item {
             display: flex;
-            gap: 10px;
-        }
-
-        .banner-install-btn {
-            padding: 8px 16px;
-            background: linear-gradient(135deg, var(--accent-gold), var(--accent-light));
-            color: var(--navy-blue);
-            border: none;
-            border-radius: 8px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .banner-install-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 5px 15px rgba(212, 175, 55, 0.4);
-        }
-
-        .banner-close-btn {
-            background: none;
-            border: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 4px;
             color: rgba(255, 255, 255, 0.6);
-            font-size: 18px;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 50%;
+            text-decoration: none;
             transition: var(--transition);
+            border-radius: 8px;
+            min-width: 60px;
         }
 
-        .banner-close-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
+        .mobile-nav-item:hover,
+        .mobile-nav-item.active {
+            color: var(--accent-gold);
+            background: rgba(212, 175, 55, 0.15);
+        }
+
+        .mobile-nav-icon {
+            font-size: 22px;
+            margin-bottom: 4px;
+        }
+
+        .mobile-nav-text {
+            font-size: 10px;
+            font-weight: 600;
         }
 
         /* Empty State */
@@ -1085,17 +842,12 @@ $is_mobile = isMobile();
             margin-bottom: 15px;
         }
 
-        .empty-state p {
-            font-size: 0.9rem;
-        }
-
         /* Animations */
         @keyframes fadeInUp {
             from {
                 opacity: 0;
                 transform: translateY(30px);
             }
-
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -1106,203 +858,140 @@ $is_mobile = isMobile();
             animation: fadeInUp 0.5s ease-out;
         }
 
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
-        }
-
-        /* Responsive Design */
-        @media (max-width: 1200px) {
-            .content-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
+        /* ==================== RESPONSIVE DESIGN ==================== */
+        
+        /* Tablets and below (1024px) */
         @media (max-width: 1024px) {
-            .sidebar-desktop {
+            .sidebar {
                 transform: translateX(-100%);
             }
-
+            
             .main-content {
                 margin-left: 0;
+                width: 100%;
+                padding-bottom: 80px;
             }
-
+            
             .mobile-nav {
                 display: block;
             }
-
-            body {
-                padding-bottom: 70px;
+            
+            .content-grid {
+                flex-direction: column;
             }
-
-            .stats-grid {
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            }
-
-            .quick-actions {
-                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            }
-
-            .install-banner {
-                bottom: 90px;
+            
+            .sidebar-column {
+                max-width: 100%;
             }
         }
-
+        
+        /* Medium Mobile (768px) */
         @media (max-width: 768px) {
-            .content-wrapper {
-                padding: 20px 15px;
+            .main-content {
+                padding: 20px;
             }
-
-            .header-title h1 {
-                font-size: 1.5rem;
-            }
-
+            
             .header-top {
                 flex-direction: column;
                 align-items: flex-start;
+                gap: 15px;
             }
-
+            
             .header-actions {
                 width: 100%;
                 justify-content: space-between;
             }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
+            
+            .quick-actions {
                 gap: 15px;
             }
-
-            .quick-actions {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 12px;
-            }
-
+            
             .action-card {
-                padding: 20px 15px;
+                min-width: calc(50% - 15px);
             }
-
-            .action-icon {
-                width: 50px;
-                height: 50px;
-                font-size: 22px;
+            
+            .stats-grid {
+                gap: 15px;
             }
-
+            
             .stat-card {
-                padding: 20px;
+                min-width: calc(50% - 15px);
             }
-
+            
             .content-card {
                 padding: 20px;
             }
-
-            .card-title {
-                font-size: 1rem;
-            }
-
-            table {
-                min-width: 500px;
-            }
-
-            th,
-            td {
-                padding: 10px 12px;
-                font-size: 0.8rem;
-            }
-
-            .mobile-nav-text {
-                font-size: 9px;
-            }
-
-            .mobile-nav-icon {
-                font-size: 20px;
-            }
-
-            .pwa-buttons {
-                flex-direction: column;
-            }
-
-            .install-btn,
-            .share-btn {
-                width: 100%;
-                justify-content: center;
-            }
         }
-
+        
+        /* Small Mobile (480px) */
         @media (max-width: 480px) {
-            .content-wrapper {
-                padding: 15px 10px;
+            .main-content {
+                padding: 15px;
             }
-
+            
             .header-title h1 {
-                font-size: 1.3rem;
+                font-size: 1.5rem;
             }
-
+            
             .quick-actions {
-                grid-template-columns: 1fr;
+                gap: 10px;
             }
-
-            .date-badge,
-            .role-badge {
-                font-size: 0.75rem;
-                padding: 8px 12px;
+            
+            .action-card {
+                min-width: 100%;
             }
-
+            
+            .stats-grid {
+                gap: 10px;
+            }
+            
+            .stat-card {
+                min-width: 100%;
+                padding: 20px;
+            }
+            
             .stat-value {
                 font-size: 1.5rem;
             }
-
-            .mobile-nav-item {
-                min-width: 55px;
-                padding: 6px 2px;
+            
+            .mobile-nav-text {
+                font-size: 9px;
             }
-
+            
+            .mobile-nav-icon {
+                font-size: 20px;
+            }
+        }
+        
+        /* Very Small Mobile (360px) */
+        @media (max-width: 360px) {
+            .header-title h1 {
+                font-size: 1.3rem;
+            }
+            
+            .date-badge, .role-badge {
+                font-size: 0.75rem;
+                padding: 8px 12px;
+            }
+            
             .mobile-nav-text {
                 font-size: 8px;
             }
-
-            .install-banner {
-                bottom: 85px;
-                margin: 5px;
-                padding: 12px 15px;
-            }
-
-            .banner-content {
-                gap: 10px;
-            }
-
-            .banner-icon {
-                font-size: 24px;
-            }
-
-            .banner-text h4 {
-                font-size: 0.9rem;
-            }
-
-            .banner-text p {
-                font-size: 0.75rem;
-            }
-
-            .banner-install-btn {
-                padding: 6px 12px;
-                font-size: 0.85rem;
+            
+            .mobile-nav-icon {
+                font-size: 18px;
             }
         }
     </style>
 </head>
 
 <body>
-    <?php if ($is_admin): ?>
+    <div class="app-container">
+        <?php if ($is_admin): ?>
         <!-- Desktop Sidebar -->
-        <aside class="sidebar-desktop">
-            <div class="sidebar-logo">
-                <div class="logo-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
                     <div class="logo-icon">
                         <i class="fas fa-hand-holding-usd"></i>
                     </div>
@@ -1313,123 +1002,50 @@ $is_mobile = isMobile();
                 </div>
             </div>
 
-            <nav class="sidebar-nav">
-                <a href="dashboard.php" class="nav-link active">
+            <nav class="nav-menu">
+                <a href="dashboard.php" class="nav-item active">
                     <i class="fas fa-tachometer-alt"></i>
                     <span>Tableau de Bord</span>
                 </a>
-                <a href="membre.php" class="nav-link">
+                <a href="membre.php" class="nav-item">
                     <i class="fas fa-users"></i>
                     <span>Membres</span>
                 </a>
-                <a href="tontine.php" class="nav-link">
+                <a href="tontine.php" class="nav-item">
                     <i class="fas fa-hand-holding-usd"></i>
                     <span>Tontines</span>
                 </a>
-                <a href="seance.php" class="nav-link">
+                <a href="seance.php" class="nav-item">
                     <i class="fas fa-calendar-alt"></i>
                     <span>Séances</span>
                 </a>
-                <a href="cotisation.php" class="nav-link">
+                <a href="cotisation.php" class="nav-item">
                     <i class="fas fa-money-bill-wave"></i>
                     <span>Cotisations</span>
                 </a>
-                <a href="credit.php" class="nav-link">
+                <a href="credit.php" class="nav-item">
                     <i class="fas fa-credit-card"></i>
                     <span>Crédits</span>
                 </a>
             </nav>
 
-            <!-- Boutons d'installation PWA dans la sidebar -->
             <div class="sidebar-footer">
-                <?php if (!$is_mobile): ?>
-                    <div class="pwa-instructions" style="margin-bottom: 15px;">
-                        <h4><i class="fas fa-mobile-alt"></i> Version Mobile</h4>
-                        <ul class="pwa-steps">
-                            <li><i class="fas fa-download"></i> Cliquez sur "Installer"</li>
-                            <li><i class="fas fa-home"></i> Ajoutez à l'écran d'accueil</li>
-                            <li><i class="fas fa-rocket"></i> Utilisez comme application</li>
-                        </ul>
-                    </div>
-                <?php endif; ?>
-
-                <div class="pwa-buttons">
-                    <button class="install-btn" id="installButton">
-                        <i class="fas fa-download"></i>
-                        <span>Installer l'App</span>
-                    </button>
-                    <button class="share-btn" id="shareButton">
-                        <i class="fas fa-share-alt"></i>
-                        <span>Partager</span>
-                    </button>
-                </div>
-
-                <a href="logout.php" class="logout-btn" style="margin-top: 15px;">
+                <a href="logout.php" class="logout-btn">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Déconnexion</span>
                 </a>
             </div>
         </aside>
-    <?php endif; ?>
+        <?php endif; ?>
 
-    <!-- Mobile Navigation -->
-    <nav class="mobile-nav">
-        <div class="mobile-nav-container">
-            <a href="dashboard.php" class="mobile-nav-item active">
-                <i class="fas fa-tachometer-alt mobile-nav-icon"></i>
-                <span class="mobile-nav-text">Dashboard</span>
-            </a>
-            <?php if ($is_admin): ?>
-                <a href="membre.php" class="mobile-nav-item">
-                    <i class="fas fa-users mobile-nav-icon"></i>
-                    <span class="mobile-nav-text">Membres</span>
-                </a>
-                <a href="tontine.php" class="mobile-nav-item">
-                    <i class="fas fa-hand-holding-usd mobile-nav-icon"></i>
-                    <span class="mobile-nav-text">Tontines</span>
-                </a>
-                <a href="seance.php" class="mobile-nav-item">
-                    <i class="fas fa-calendar-alt mobile-nav-icon"></i>
-                    <span class="mobile-nav-text">Séances</span>
-                </a>
-            <?php else: ?>
-                <a href="cotisation.php" class="mobile-nav-item">
-                    <i class="fas fa-money-bill-wave mobile-nav-icon"></i>
-                    <span class="mobile-nav-text">Cotisations</span>
-                </a>
-                <a href="seances.php" class="mobile-nav-item">
-                    <i class="fas fa-hand-holding-usd mobile-nav-icon"></i>
-                    <span class="mobile-nav-text">Tontines</span>
-                </a>
-                <a href="credit.php" class="mobile-nav-item">
-                    <i class="fas fa-credit-card mobile-nav-icon"></i>
-                    <span class="mobile-nav-text">Crédits</span>
-                </a>
-            <?php endif; ?>
-            <a href="logout.php" class="mobile-nav-item">
-                <i class="fas fa-sign-out-alt mobile-nav-icon"></i>
-                <span class="mobile-nav-text">Sortir</span>
-            </a>
-        </div>
-    </nav>
-
-    <!-- Main Content -->
-    <main class="main-content">
-        <div class="content-wrapper">
+        <!-- Main Content -->
+        <main class="main-content">
             <!-- Header -->
-            <header class="page-header fade-in">
+            <header class="header">
                 <div class="header-top">
                     <div class="header-title">
                         <h1><?php echo $is_admin ? '🎯 Tableau de Bord Admin' : '👋 Mon Espace'; ?></h1>
                         <p>Bienvenue <strong><?php echo htmlspecialchars($user['prenom'] . ' ' . $user['nom']); ?></strong> !</p>
-                        <?php if ($is_mobile && !isset($_SESSION['hide_banner'])): ?>
-                            <div class="pwa-buttons" style="margin-top: 10px;">
-                                <button class="install-btn" id="headerInstallButton">
-                                    <i class="fas fa-download"></i>
-                                    <span>Télécharger l'App</span>
-                                </button>
-                            </div>
-                        <?php endif; ?>
                     </div>
                     <div class="header-actions">
                         <div class="date-badge">
@@ -1442,29 +1058,6 @@ $is_mobile = isMobile();
                     </div>
                 </div>
             </header>
-
-            <!-- Mobile Install Banner -->
-            <?php if ($is_mobile && !isset($_SESSION['hide_banner'])): ?>
-                <div class="install-banner" id="installBanner">
-                    <div class="banner-content">
-                        <div class="banner-icon">
-                            <i class="fas fa-mobile-alt"></i>
-                        </div>
-                        <div class="banner-text">
-                            <h4>Installer l'application</h4>
-                            <p>Utilisez l'app hors ligne comme une vraie application</p>
-                        </div>
-                    </div>
-                    <div class="banner-actions">
-                        <button class="banner-install-btn" id="bannerInstallButton">
-                            Installer
-                        </button>
-                        <button class="banner-close-btn" id="closeBanner">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                </div>
-            <?php endif; ?>
 
             <!-- Quick Actions -->
             <div class="quick-actions fade-in" style="animation-delay: 0.1s">
@@ -1672,76 +1265,77 @@ $is_mobile = isMobile();
 
             <!-- Content Grid -->
             <div class="content-grid fade-in" style="animation-delay: 0.3s">
-                <!-- Activities Table -->
-                <div class="content-card">
-                    <div class="card-header">
-                        <h3 class="card-title">
-                            <i class="fas fa-history"></i>
-                            <?php echo $is_admin ? 'Activités Récentes' : 'Mes Activités'; ?>
-                        </h3>
-                        <a href="#" class="view-all-btn">
-                            Voir tout <i class="fas fa-arrow-right"></i>
-                        </a>
-                    </div>
+                <div class="main-column">
+                    <!-- Activities Table -->
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <i class="fas fa-history"></i>
+                                <?php echo $is_admin ? 'Activités Récentes' : 'Mes Activités'; ?>
+                            </h3>
+                            <a href="#" class="view-all-btn">
+                                Voir tout <i class="fas fa-arrow-right"></i>
+                            </a>
+                        </div>
 
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Type</th>
-                                    <th>Description</th>
-                                    <th>Date</th>
-                                    <?php if (!$is_admin): ?>
-                                        <th>Montant</th>
-                                    <?php endif; ?>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (!empty($activites)): ?>
-                                    <?php foreach ($activites as $activite): ?>
-                                        <tr>
-                                            <td>
-                                                <span class="type-badge" style="background: <?php
-                                                                                            if ($activite['type'] == 'membre') echo 'linear-gradient(135deg, #3b82f6, #2563eb)';
-                                                                                            elseif ($activite['type'] == 'tontine') echo 'linear-gradient(135deg, #f59e0b, #d97706)';
-                                                                                            elseif ($activite['type'] == 'seance') echo 'linear-gradient(135deg, #10b981, #059669)';
-                                                                                            elseif ($activite['type'] == 'cotisation') echo 'linear-gradient(135deg, #a855f7, #9333ea)';
-                                                                                            else echo 'linear-gradient(135deg, #6b7280, #4b5563)';
-                                                                                            ?>;">
-                                                    <?php echo substr(ucfirst($activite['type']), 0, 3); ?>
-                                                </span>
-                                            </td>
-                                            <td style="font-weight: 600; color: var(--text-dark);">
-                                                <?php echo htmlspecialchars($activite['nom']); ?>
-                                            </td>
-                                            <td style="color: var(--text-light);">
-                                                <i class="fas fa-calendar" style="color: var(--accent-gold); margin-right: 5px;"></i>
-                                                <?php echo date('d/m/Y', strtotime($activite['date'])); ?>
-                                            </td>
-                                            <?php if (!$is_admin && isset($activite['montant'])): ?>
-                                                <td style="font-weight: 700; color: #10b981;">
-                                                    <?php echo number_format($activite['montant'], 0, ',', ' '); ?> FCFA
-                                                </td>
-                                            <?php endif; ?>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
+                        <div class="table-container">
+                            <table>
+                                <thead>
                                     <tr>
-                                        <td colspan="<?php echo $is_admin ? 3 : 4; ?>">
-                                            <div class="empty-state">
-                                                <i class="fas fa-inbox"></i>
-                                                <p>Aucune activité récente</p>
-                                            </div>
-                                        </td>
+                                        <th>Type</th>
+                                        <th>Description</th>
+                                        <th>Date</th>
+                                        <?php if (!$is_admin): ?>
+                                            <th>Montant</th>
+                                        <?php endif; ?>
                                     </tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    <?php if (!empty($activites)): ?>
+                                        <?php foreach ($activites as $activite): ?>
+                                            <tr>
+                                                <td>
+                                                    <span class="type-badge" style="background: <?php
+                                                                                                if ($activite['type'] == 'membre') echo 'linear-gradient(135deg, #3b82f6, #2563eb)';
+                                                                                                elseif ($activite['type'] == 'tontine') echo 'linear-gradient(135deg, #f59e0b, #d97706)';
+                                                                                                elseif ($activite['type'] == 'seance') echo 'linear-gradient(135deg, #10b981, #059669)';
+                                                                                                elseif ($activite['type'] == 'cotisation') echo 'linear-gradient(135deg, #a855f7, #9333ea)';
+                                                                                                else echo 'linear-gradient(135deg, #6b7280, #4b5563)';
+                                                                                                ?>;">
+                                                        <?php echo substr(ucfirst($activite['type']), 0, 3); ?>
+                                                    </span>
+                                                </td>
+                                                <td style="font-weight: 600; color: var(--text-dark);">
+                                                    <?php echo htmlspecialchars($activite['nom']); ?>
+                                                </td>
+                                                <td style="color: var(--text-light);">
+                                                    <i class="fas fa-calendar" style="color: var(--accent-gold); margin-right: 5px;"></i>
+                                                    <?php echo date('d/m/Y', strtotime($activite['date'])); ?>
+                                                </td>
+                                                <?php if (!$is_admin && isset($activite['montant'])): ?>
+                                                    <td style="font-weight: 700; color: #10b981;">
+                                                        <?php echo number_format($activite['montant'], 0, ',', ' '); ?> FCFA
+                                                    </td>
+                                                <?php endif; ?>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <tr>
+                                            <td colspan="<?php echo $is_admin ? 3 : 4; ?>">
+                                                <div class="empty-state">
+                                                    <i class="fas fa-inbox"></i>
+                                                    <p>Aucune activité récente</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Sidebar Content -->
-                <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="sidebar-column">
                     <?php if ($is_admin): ?>
                         <!-- Recent Members -->
                         <div class="content-card">
@@ -1849,20 +1443,52 @@ $is_mobile = isMobile();
                             <span class="system-label">Dernière MAJ</span>
                             <span class="system-value"><?php echo date('d/m/Y'); ?></span>
                         </div>
-                        <div class="system-item">
-                            <span class="system-label">App Mobile</span>
-                            <span class="system-value">
-                                <button class="install-btn" style="padding: 5px 10px; font-size: 0.8rem;" id="systemInstallButton">
-                                    <i class="fas fa-download"></i>
-                                    Installer
-                                </button>
-                            </span>
-                        </div>
                     </div>
                 </div>
             </div>
+        </main>
+    </div>
+
+    <!-- Mobile Navigation -->
+    <nav class="mobile-nav">
+        <div class="mobile-nav-container">
+            <a href="dashboard.php" class="mobile-nav-item active">
+                <i class="fas fa-tachometer-alt mobile-nav-icon"></i>
+                <span class="mobile-nav-text">Dashboard</span>
+            </a>
+            <?php if ($is_admin): ?>
+                <a href="membre.php" class="mobile-nav-item">
+                    <i class="fas fa-users mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Membres</span>
+                </a>
+                <a href="tontine.php" class="mobile-nav-item">
+                    <i class="fas fa-hand-holding-usd mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Tontines</span>
+                </a>
+                <a href="seance.php" class="mobile-nav-item">
+                    <i class="fas fa-calendar-alt mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Séances</span>
+                </a>
+            <?php else: ?>
+                <a href="cotisation.php" class="mobile-nav-item">
+                    <i class="fas fa-money-bill-wave mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Cotisations</span>
+                </a>
+                <a href="seances.php" class="mobile-nav-item">
+                    <i class="fas fa-hand-holding-usd mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Tontines</span>
+                </a>
+                <a href="credit.php" class="mobile-nav-item">
+                    <i class="fas fa-credit-card mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Crédits</span>
+                </a>
+            <?php endif; ?>
+            <a href="logout.php" class="mobile-nav-item">
+                <i class="fas fa-sign-out-alt mobile-nav-icon"></i>
+                <span class="mobile-nav-text">Sortir</span>
+            </a>
         </div>
-    </main>
+    </nav>
 
     <script>
         // Mettre à jour la date et l'heure
@@ -1885,105 +1511,9 @@ $is_mobile = isMobile();
         // Mettre à jour la date chaque minute
         setInterval(updateDateTime, 60000);
 
-        // Variables pour PWA
-        let deferredPrompt;
-        let installBanner = document.getElementById('installBanner');
-        let installButtons = document.querySelectorAll('.install-btn, #bannerInstallButton, #headerInstallButton, #systemInstallButton');
-        let shareButton = document.getElementById('shareButton');
-        let closeBanner = document.getElementById('closeBanner');
-
-        // Gérer l'installation PWA
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-
-            // Afficher le banner sur mobile
-            if (installBanner) {
-                installBanner.style.display = 'flex';
-            }
-
-            // Activer tous les boutons d'installation
-            installButtons.forEach(button => {
-                button.style.display = 'flex';
-                button.addEventListener('click', installPWA);
-            });
-        });
-
-        // Fonction d'installation PWA
-        async function installPWA() {
-            if (!deferredPrompt) {
-                // Si pas d'événement beforeinstallprompt, donner des instructions
-                showNotification('Installation', 'Sur mobile: utilisez "Ajouter à l\'écran d\'accueil" dans le menu du navigateur.', 'info');
-                return;
-            }
-
-            deferredPrompt.prompt();
-            const {
-                outcome
-            } = await deferredPrompt.userChoice;
-
-            if (outcome === 'accepted') {
-                showNotification('Succès', 'Application installée avec succès!', 'success');
-                if (installBanner) installBanner.style.display = 'none';
-            } else {
-                showNotification('Annulé', 'Installation annulée.', 'info');
-            }
-
-            deferredPrompt = null;
-        }
-
-        // Fonction de partage
-        async function shareApp() {
-            const shareData = {
-                title: 'Gestion de Tontine',
-                text: 'Gérez vos tontines facilement avec cette application!',
-                url: window.location.href
-            };
-
-            try {
-                if (navigator.share) {
-                    await navigator.share(shareData);
-                } else {
-                    // Fallback pour les navigateurs sans Web Share API
-                    await navigator.clipboard.writeText(window.location.href);
-                    showNotification('Partagé!', 'Lien copié dans le presse-papier.', 'success');
-                }
-            } catch (err) {
-                console.log('Erreur de partage:', err);
-            }
-        }
-
-        // Fermer le banner
-        if (closeBanner) {
-            closeBanner.addEventListener('click', () => {
-                installBanner.style.display = 'none';
-                // Envoyer une requête pour mémoriser le choix
-                fetch('hide_banner.php')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            console.log('Banner caché pour cette session');
-                        }
-                    })
-                    .catch(err => console.error('Erreur:', err));
-            });
-        }
-
-        // Initialiser les boutons
-        if (shareButton) {
-            shareButton.addEventListener('click', shareApp);
-        }
-
-        // Vérifier si l'app est déjà installée
-        window.addEventListener('appinstalled', () => {
-            console.log('PWA installée');
-            if (installBanner) installBanner.style.display = 'none';
-            installButtons.forEach(button => button.style.display = 'none');
-        });
-
-        // Gérer l'inactivité côté client (backup)
+        // Gérer l'inactivité côté client
         let inactivityTimer;
-        const TIMEOUT = 600000; // 10 minutes en millisecondes
+        const TIMEOUT = 600000; // 10 minutes
 
         function resetInactivityTimer() {
             clearTimeout(inactivityTimer);
@@ -2024,91 +1554,10 @@ $is_mobile = isMobile();
 
                 card.addEventListener('mouseleave', function() {
                     this.style.transform = 'translateY(0) scale(1)';
-                    this.style.boxShadow = '0 15px 40px rgba(0, 0, 0, 0.15)';
-                });
-            });
-
-            // Afficher/masquer les détails dans les tables sur mobile
-            if (window.innerWidth <= 768) {
-                const tableRows = document.querySelectorAll('tbody tr');
-                tableRows.forEach(row => {
-                    row.addEventListener('click', function() {
-                        this.classList.toggle('expanded');
-                    });
-                });
-            }
-
-            // Ajouter une indication de chargement pour les actions
-            const actionCards = document.querySelectorAll('.action-card');
-            actionCards.forEach(card => {
-                card.addEventListener('click', function(e) {
-                    if (this.classList.contains('loading')) {
-                        e.preventDefault();
-                        return;
-                    }
-
-                    this.classList.add('loading');
-                    const icon = this.querySelector('.action-icon i');
-                    const originalIcon = icon.className;
-                    icon.className = 'fas fa-spinner fa-spin';
-
-                    setTimeout(() => {
-                        this.classList.remove('loading');
-                        icon.className = originalIcon;
-                    }, 1500);
+                    this.style.boxShadow = 'none';
                 });
             });
         });
-
-        // Fonction pour afficher les notifications
-        function showNotification(title, message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.innerHTML = `
-                <div class="notification-icon">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
-                </div>
-                <div class="notification-content">
-                    <strong>${title}</strong>
-                    <p>${message}</p>
-                </div>
-                <button class="notification-close">
-                    <i class="fas fa-times"></i>
-                </button>
-            `;
-
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: white;
-                padding: 15px;
-                border-radius: 10px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-                display: flex;
-                align-items: center;
-                gap: 15px;
-                z-index: 9999;
-                animation: slideIn 0.3s ease;
-                border-left: 4px solid ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
-                max-width: 350px;
-            `;
-
-            document.body.appendChild(notification);
-
-            const closeBtn = notification.querySelector('.notification-close');
-            closeBtn.addEventListener('click', () => {
-                notification.style.animation = 'slideOut 0.3s ease';
-                setTimeout(() => notification.remove(), 300);
-            });
-
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.style.animation = 'slideOut 0.3s ease';
-                    setTimeout(() => notification.remove(), 300);
-                }
-            }, 5000);
-        }
 
         // Gérer la déconnexion
         document.querySelectorAll('a[href="logout.php"]').forEach(link => {
@@ -2130,321 +1579,6 @@ $is_mobile = isMobile();
                 }
             });
         });
-
-        // Gestion du mode hors ligne
-        window.addEventListener('online', () => {
-            showNotification('Connexion rétablie', 'Vous êtes de nouveau en ligne.', 'success');
-        });
-
-        window.addEventListener('offline', () => {
-            showNotification('Hors ligne', 'Vérifiez votre connexion internet.', 'error');
-        }); 
-            // Script d'installation PWA - Version corrigée
-            (function() {
-                'use strict';
-
-                let deferredPrompt = null;
-                let isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                let isAndroid = /Android/.test(navigator.userAgent);
-                let isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                    window.navigator.standalone ||
-                    document.referrer.includes('android-app://');
-
-                console.log('PWA Debug:', {
-                    isIOS,
-                    isAndroid,
-                    isStandalone,
-                    beforeinstallprompt: window['beforeinstallprompt'] ? 'exists' : 'missing',
-                    standalone: window.matchMedia('(display-mode: standalone)').matches,
-                    navigatorStandalone: window.navigator.standalone
-                });
-
-                // Fonction pour afficher les notifications
-                function showNotification(title, message, type = 'info') {
-                    const notification = document.createElement('div');
-                    notification.className = `notification ${type}`;
-                    notification.innerHTML = `
-            <div class="notification-icon">
-                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
-            </div>
-            <div class="notification-content">
-                <strong>${title}</strong>
-                <p>${message}</p>
-            </div>
-            <button class="notification-close">
-                <i class="fas fa-times"></i>
-            </button>
-        `;
-
-                    notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            z-index: 9999;
-            animation: slideIn 0.3s ease;
-            border-left: 4px solid ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
-            max-width: 350px;
-        `;
-
-                    document.body.appendChild(notification);
-
-                    const closeBtn = notification.querySelector('.notification-close');
-                    closeBtn.addEventListener('click', () => {
-                        notification.remove();
-                    });
-
-                    setTimeout(() => {
-                        if (notification.parentNode) {
-                            notification.remove();
-                        }
-                    }, 5000);
-                }
-
-                // Fonction pour afficher le bouton d'installation
-                function showInstallButton() {
-                    console.log('showInstallButton called');
-                    const installButtons = document.querySelectorAll('.install-btn, #installButton, #headerInstallButton, #systemInstallButton, #bannerInstallButton');
-
-                    installButtons.forEach(button => {
-                        console.log('Found button:', button.id || button.className);
-                        button.style.display = 'flex';
-                        button.disabled = false;
-
-                        // Retirer les anciens écouteurs
-                        button.removeEventListener('click', installPWA);
-                        // Ajouter le nouvel écouteur
-                        button.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            console.log('Install button clicked');
-                            installPWA();
-                        });
-                    });
-
-                    // Afficher le banner mobile
-                    const banner = document.getElementById('installBanner');
-                    if (banner && !isStandalone && (isIOS || isAndroid)) {
-                        console.log('Showing banner');
-                        banner.style.display = 'flex';
-                    }
-                }
-
-                // Fonction d'installation
-                async function installPWA() {
-                    console.log('installPWA called, deferredPrompt:', deferredPrompt);
-
-                    if (isIOS) {
-                        // Instructions pour iOS
-                        showNotification('Installation sur iOS',
-                            '1. Appuyez sur le bouton "Partager" (icône carrée avec flèche)<br>' +
-                            '2. Faites défiler vers le bas<br>' +
-                            '3. Sélectionnez "Sur l\'écran d\'accueil"<br>' +
-                            '4. Appuyez sur "Ajouter"',
-                            'info');
-                        return;
-                    }
-
-                    if (!deferredPrompt) {
-                        // Instructions pour Android/Desktop
-                        showNotification('Installation',
-                            'Utilisez le menu de votre navigateur (⋮ ou ...) et sélectionnez:<br>' +
-                            '- "Installer l\'application" (Chrome)<br>' +
-                            '- "Installer le site" (Firefox)<br>' +
-                            '- "Ajouter à l\'écran d\'accueil" (Safari)',
-                            'info');
-                        return;
-                    }
-
-                    try {
-                        deferredPrompt.prompt();
-                        const {
-                            outcome
-                        } = await deferredPrompt.userChoice;
-
-                        if (outcome === 'accepted') {
-                            console.log('User accepted the install prompt');
-                            showNotification('Succès', 'Application installée avec succès!', 'success');
-                            hideInstallButton();
-                        } else {
-                            console.log('User dismissed the install prompt');
-                            showNotification('Annulé', 'Installation annulée.', 'info');
-                        }
-
-                        deferredPrompt = null;
-                        hideInstallButton();
-
-                    } catch (error) {
-                        console.error('Installation error:', error);
-                        showNotification('Erreur', 'Impossible d\'installer l\'application.', 'error');
-                    }
-                }
-
-                function hideInstallButton() {
-                    const installButtons = document.querySelectorAll('.install-btn, #installButton, #headerInstallButton, #systemInstallButton, #bannerInstallButton');
-                    installButtons.forEach(button => {
-                        button.style.display = 'none';
-                    });
-
-                    const banner = document.getElementById('installBanner');
-                    if (banner) {
-                        banner.style.display = 'none';
-                    }
-                }
-
-                // Fonction de partage
-                async function shareApp() {
-                    const shareData = {
-                        title: 'Gestion de Tontine',
-                        text: 'Gérez vos tontines facilement avec cette application!',
-                        url: window.location.origin
-                    };
-
-                    try {
-                        if (navigator.share) {
-                            await navigator.share(shareData);
-                        } else {
-                            await navigator.clipboard.writeText(window.location.href);
-                            showNotification('Partagé!', 'Lien copié dans le presse-papier.', 'success');
-                        }
-                    } catch (err) {
-                        console.log('Erreur de partage:', err);
-                    }
-                }
-
-                // Initialiser les boutons
-                document.addEventListener('DOMContentLoaded', function() {
-                    console.log('DOM loaded, initializing PWA buttons');
-
-                    // Attacher l'écouteur au bouton de partage
-                    const shareButton = document.getElementById('shareButton');
-                    if (shareButton) {
-                        shareButton.addEventListener('click', shareApp);
-                    }
-
-                    // Attacher l'écouteur au bouton de fermeture du banner
-                    const closeBanner = document.getElementById('closeBanner');
-                    if (closeBanner) {
-                        closeBanner.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            const banner = document.getElementById('installBanner');
-                            if (banner) {
-                                banner.style.display = 'none';
-                            }
-                        });
-                    }
-
-                    // Vérifier si l'app est déjà installée
-                    if (isStandalone) {
-                        console.log('App already installed, hiding buttons');
-                        hideInstallButton();
-                    }
-                });
-
-                // Écouter l'événement d'installation
-                window.addEventListener('beforeinstallprompt', function(e) {
-                    console.log('beforeinstallprompt event fired!');
-                    e.preventDefault();
-                    deferredPrompt = e;
-                    showInstallButton();
-                });
-
-                // Détecter l'installation réussie
-                window.addEventListener('appinstalled', function() {
-                    console.log('PWA was installed');
-                    deferredPrompt = null;
-                    hideInstallButton();
-                    showNotification('Installation réussie',
-                        'L\'application a été installée avec succès! Vous pouvez maintenant l\'utiliser hors ligne.',
-                        'success');
-                });
-
-                // Détecter si nous sommes en HTTPS (requis pour PWA)
-                if (window.location.protocol !== 'https:') {
-                    console.warn('PWA requires HTTPS for installation');
-                    showNotification('Attention',
-                        'Pour installer l\'application, vous devez être en HTTPS. L\'application fonctionnera toujours, mais certaines fonctionnalités PWA seront limitées.',
-                        'warning');
-                }
-
-                // Ajouter des styles CSS pour les animations
-                const style = document.createElement('style');
-                style.textContent = `
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        @keyframes slideOut {
-            from {
-                transform: translateX(0);
-                opacity: 1;
-            }
-            to {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-        }
-        .notification-close {
-            background: none;
-            border: none;
-            color: #6b7280;
-            cursor: pointer;
-            font-size: 14px;
-            padding: 5px;
-            border-radius: 50%;
-            transition: all 0.2s;
-        }
-        .notification-close:hover {
-            background: #f3f4f6;
-            color: #374151;
-        }
-        .notification-icon {
-            font-size: 20px;
-        }
-        .notification.success .notification-icon {
-            color: #10b981;
-        }
-        .notification.info .notification-icon {
-            color: #3b82f6;
-        }
-        .notification.warning .notification-icon {
-            color: #f59e0b;
-        }
-        .notification.error .notification-icon {
-            color: #ef4444;
-        }
-    `;
-                document.head.appendChild(style);
-
-            })();
-    </script>
-
-    <!-- Ajouter ceci pour tester rapidement -->
-    <script>
-        // Tester manuellement si les boutons fonctionnent
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('Testing PWA functionality...');
-
-            // Tester le clic sur tous les boutons d'installation
-            const installButtons = document.querySelectorAll('[class*="install"], [id*="Install"]');
-            installButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    console.log('Button clicked:', this.id || this.className);
-                });
-            });
-        });
-    </script>
     </script>
 </body>
 

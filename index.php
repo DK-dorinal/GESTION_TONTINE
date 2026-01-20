@@ -1,6 +1,11 @@
+
 <?php
 session_start();
-@include './fonctions/config.php';
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// @include './fonctions/config.php';
 
 // Rediriger si déjà connecté
 if (isset($_SESSION['user_id'])) {
@@ -20,43 +25,29 @@ function sanitizeInput($data)
 // Fonction pour valider le format du téléphone camerounais
 function isValidPhone($phone)
 {
-    // Supprime tous les espaces et tirets
     $phone = preg_replace('/[\s\-]/', '', $phone);
-
-    // Pour 9 chiffres (commence par 6 ou 2)
     if (strlen($phone) == 9) {
         return preg_match('/^[62][0-9]{8}$/', $phone);
     }
-
-    // Pour 8 chiffres (commence par 67, 65 ou 69)
     if (strlen($phone) == 8) {
         return preg_match('/^(67|65|69)[0-9]{6}$/', $phone);
     }
-
     return false;
 }
 
 // Fonction pour normaliser le numéro de téléphone camerounais
 function normalizePhone($phone)
 {
-    // Supprime tous les caractères non numériques
     $phone = preg_replace('/[^\d]/', '', $phone);
-
-    // Si le numéro a 9 chiffres et commence par 6 ou 2, ajoute +237
     if (strlen($phone) == 9 && in_array($phone[0], ['6', '2'])) {
         return '+237' . $phone;
     }
-
-    // Si le numéro a 8 chiffres et commence par 67, 65 ou 69, ajoute +237
     if (strlen($phone) == 8 && in_array(substr($phone, 0, 2), ['67', '65', '69'])) {
         return '+237' . $phone;
     }
-
-    // Si déjà avec l'indicatif +237, le retourner tel quel
     if (strlen($phone) >= 12 && substr($phone, 0, 3) == '237') {
         return '+' . $phone;
     }
-
     return $phone;
 }
 
@@ -78,28 +69,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = "Le numéro de téléphone est obligatoire";
     }
 
-    // Validation du format du téléphone camerounais
     if (!empty($telephone) && !isValidPhone($telephone)) {
-        $errors[] = "Format de téléphone invalide. Formats acceptés pour le Cameroun :<br>
-                    • 677123456 (9 chiffres)<br>
-                    • 699987654 (9 chiffres)<br>
-                    • 67712345 (8 chiffres)<br>
-                    • 65523456 (8 chiffres)<br>
-                    • 69012345 (8 chiffres)";
+        $errors[] = "Format de téléphone invalide";
     }
 
     if (empty($errors)) {
-        // Normaliser le téléphone
         $telephone = normalizePhone($telephone);
-
-        // Connexion à la base de données
         $conn = new mysqli('localhost', 'root', '', 'gestion_tontine');
 
         if ($conn->connect_error) {
             $errors[] = "Erreur de connexion à la base de données";
         } else {
-            // Rechercher le membre dans la base de données
-            // On vérifie soit par nom seul, soit par combinaison nom + téléphone
             $sql = "SELECT * FROM membre WHERE telephone = ?";
             $stmt = $conn->prepare($sql);
             $stmt->bind_param("s", $telephone);
@@ -108,19 +88,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($result->num_rows > 0) {
                 $membre = $result->fetch_assoc();
-
-                // Vérifier si le nom correspond
-                // On accepte soit le nom seul, soit nom+prenom
                 $nom_complet = $membre['nom'] . ' ' . $membre['prenom'];
                 $nom_simple = $membre['nom'];
 
-                // Comparaison insensible à la casse
                 $usernameLower = strtolower($username);
                 $nom_complet_lower = strtolower($nom_complet);
                 $nom_simple_lower = strtolower($nom_simple);
 
                 if ($usernameLower === $nom_complet_lower || $usernameLower === $nom_simple_lower) {
-                    // Authentification réussie
                     $_SESSION['user_id'] = $membre['id_membre'];
                     $_SESSION['username'] = $membre['nom'];
                     $_SESSION['role'] = $membre['role'];
@@ -130,70 +105,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['adresse'] = $membre['adresse'];
                     $_SESSION['login_time'] = time();
                     $_SESSION['login_method'] = 'nom_telephone';
-
-                    // Message de bienvenue
                     $_SESSION['welcome_message'] = "Bienvenue " . $nom_complet . " !";
 
-                    // Fermer la connexion
                     $stmt->close();
                     $conn->close();
 
-                    // Rediriger vers la page d'accueil
                     header('Location: dashboard.php');
                     exit();
                 } else {
-                    $errors[] = "Nom d'utilisateur incorrect. Essayez avec: '" . $nom_simple . "' ou '" . $nom_complet . "'";
+                    $errors[] = "Identifiants incorrects";
                 }
             } else {
-                // Essayer aussi sans le préfixe +237
-                $telephone_sans_prefixe = str_replace('+237', '', $telephone);
-                if (!empty($telephone_sans_prefixe) && $telephone_sans_prefixe !== $telephone) {
-                    $sql2 = "SELECT * FROM membre WHERE telephone LIKE ?";
-                    $stmt2 = $conn->prepare($sql2);
-                    $search_phone = '%' . $telephone_sans_prefixe . '%';
-                    $stmt2->bind_param("s", $search_phone);
-                    $stmt2->execute();
-                    $result2 = $stmt2->get_result();
-
-                    if ($result2->num_rows > 0) {
-                        $membre = $result2->fetch_assoc();
-
-                        $nom_complet = $membre['nom'] . ' ' . $membre['prenom'];
-                        $nom_simple = $membre['nom'];
-
-                        $usernameLower = strtolower($username);
-                        $nom_complet_lower = strtolower($nom_complet);
-                        $nom_simple_lower = strtolower($nom_simple);
-
-                        if ($usernameLower === $nom_complet_lower || $usernameLower === $nom_simple_lower) {
-                            // Authentification réussie
-                            $_SESSION['user_id'] = $membre['id_membre'];
-                            $_SESSION['username'] = $membre['nom'];
-                            $_SESSION['role'] = $membre['role'];
-                            $_SESSION['nom'] = $nom_complet;
-                            $_SESSION['telephone'] = $membre['telephone'];
-                            $_SESSION['prenom'] = $membre['prenom'];
-                            $_SESSION['adresse'] = $membre['adresse'];
-                            $_SESSION['login_time'] = time();
-                            $_SESSION['login_method'] = 'nom_telephone';
-
-                            $_SESSION['welcome_message'] = "Bienvenue " . $nom_complet . " !";
-
-                            $stmt2->close();
-                            $conn->close();
-
-                            header('Location: membre.php');
-                            exit();
-                        } else {
-                            $errors[] = "Nom d'utilisateur incorrect. Essayez avec: '" . $nom_simple . "' ou '" . $nom_complet . "'";
-                        }
-                    } else {
-                        $errors[] = "Numéro de téléphone non trouvé dans la base de données";
-                    }
-                    $stmt2->close();
-                } else {
-                    $errors[] = "Numéro de téléphone non trouvé dans la base de données";
-                }
+                $errors[] = "Numéro de téléphone non trouvé";
             }
 
             if (isset($stmt)) {
@@ -209,18 +132,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Récupérer quelques membres pour afficher dans les exemples
+// Récupérer quelques membres
 $conn = new mysqli('localhost', 'root', '', 'gestion_tontine');
 $demo_membres = [];
 if (!$conn->connect_error) {
-    $sql = "SELECT id_membre, nom, prenom, telephone, role FROM membre LIMIT 5";
+    $sql = "SELECT id_membre, nom, prenom, telephone, role FROM membre LIMIT 4";
     $result = $conn->query($sql);
     if ($result) {
         while ($row = $result->fetch_assoc()) {
             $demo_membres[] = [
                 'id' => $row['id_membre'],
                 'nom' => $row['nom'] . ' ' . $row['prenom'],
-                'username' => $row['nom'], // Utiliser le nom comme username
+                'username' => $row['nom'],
                 'telephone' => $row['telephone'],
                 'role' => $row['role']
             ];
@@ -229,7 +152,6 @@ if (!$conn->connect_error) {
     $conn->close();
 }
 
-// Si pas de membres dans la base, utiliser des exemples fictifs
 if (empty($demo_membres)) {
     $demo_membres = [
         [
@@ -256,35 +178,9 @@ if (empty($demo_membres)) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connexion | Système de Gestion de Tontine</title>
+    <title>Connexion - Gestion Tontine</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#0f1a3a">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="TontineApp">
-    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
-    <link rel="icon" type="image/png" href="/icons/icon-192x192.png">
     <style>
-        :root {
-            --navy-blue: #0f1a3a;
-            --dark-blue: #1a2b55;
-            --medium-blue: #2d4a8a;
-            --light-blue: #3a5fc0;
-            --accent-gold: #d4af37;
-            --accent-light: #e6c34d;
-            --pure-white: #ffffff;
-            --text-dark: #1e293b;
-            --text-light: #64748b;
-            --bg-light: #f8fafc;
-            --glass-bg: rgba(255, 255, 255, 0.9);
-            --shadow-light: rgba(15, 26, 58, 0.1);
-            --shadow-medium: rgba(15, 26, 58, 0.2);
-            --border-radius: 12px;
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
         * {
             margin: 0;
             padding: 0;
@@ -292,649 +188,560 @@ if (empty($demo_membres)) {
         }
 
         body {
-            font-family: 'Poppins', 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #0f1a3a 0%, #1a2b55 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background: #0a0e27;
             min-height: 100vh;
+            display: flex;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Left Section - Login Form */
+        .login-section {
+            flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 40px 20px;
             position: relative;
-            overflow: hidden;
-        }
-
-        body::before {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="none"/><path d="M0,0 L100,0 L100,100" stroke="rgba(255,255,255,0.03)" stroke-width="1"/></svg>');
-            background-size: 50px 50px;
-            opacity: 0.3;
-            animation: gridMove 20s linear infinite;
-        }
-
-        @keyframes gridMove {
-            0% {
-                background-position: 0 0;
-            }
-
-            100% {
-                background-position: 50px 50px;
-            }
+            z-index: 10;
         }
 
         .login-container {
             width: 100%;
-            max-width: 450px;
-            z-index: 1;
+            max-width: 440px;
         }
 
-        .login-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: var(--border-radius);
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            animation: slideUp 0.6s ease-out;
-            position: relative;
-            overflow: hidden;
+        .brand {
+            margin-bottom: 48px;
         }
 
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
         }
 
-        .login-card::before {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--accent-gold) 0%, var(--light-blue) 50%, var(--accent-gold) 100%);
-            animation: shimmer 3s infinite linear;
-        }
-
-        @keyframes shimmer {
-            0% {
-                background-position: -200px 0;
-            }
-
-            100% {
-                background-position: 200px 0;
-            }
-        }
-
-        .logo-section {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .logo-icon {
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(135deg, var(--accent-gold) 0%, var(--light-blue) 100%);
-            border-radius: 50%;
+        .brand-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 20px;
-            color: var(--pure-white);
-            font-size: 2rem;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            color: white;
+            font-size: 24px;
         }
 
-        .logo-title {
-            font-size: 1.8rem;
+        .brand-name {
+            font-size: 28px;
             font-weight: 700;
-            color: var(--navy-blue);
-            margin-bottom: 5px;
+            color: #ffffff;
+            letter-spacing: -0.5px;
         }
 
-        .logo-subtitle {
-            color: var(--text-light);
-            font-size: 0.9rem;
-            font-weight: 500;
+        .brand-tagline {
+            color: #8b92a7;
+            font-size: 15px;
+            margin-left: 60px;
         }
 
-        .login-info {
-            background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(58, 95, 192, 0.1) 100%);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 25px;
-            border-left: 4px solid var(--accent-gold);
+        .form-header {
+            margin-bottom: 32px;
         }
 
-        .login-info p {
-            color: var(--text-dark);
-            font-size: 0.9rem;
+        .form-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .form-subtitle {
+            color: #8b92a7;
+            font-size: 15px;
+        }
+
+        .login-form {
             display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .login-info i {
-            color: var(--accent-gold);
+            flex-direction: column;
+            gap: 24px;
         }
 
         .form-group {
-            margin-bottom: 25px;
-            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
+        .form-label {
+            color: #c7cad9;
+            font-size: 14px;
             font-weight: 500;
-            color: var(--text-dark);
-            font-size: 0.9rem;
         }
 
-        .input-with-icon {
+        .input-wrapper {
             position: relative;
         }
 
-        .input-with-icon i {
+        .form-input {
+            width: 100%;
+            padding: 14px 16px 14px 44px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-input::placeholder {
+            color: #6b7280;
+        }
+
+        .input-icon {
             position: absolute;
-            left: 15px;
+            left: 16px;
             top: 50%;
             transform: translateY(-50%);
-            color: var(--text-light);
-            z-index: 1;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 14px 15px 14px 45px;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            font-family: "Poppins", sans-serif;
-            font-size: 0.95rem;
-            transition: var(--transition);
-            background: var(--pure-white);
-            color: var(--text-dark);
-        }
-
-        .form-control:focus {
-            border-color: var(--light-blue);
-            box-shadow: 0 0 0 3px rgba(58, 95, 192, 0.2);
-            outline: none;
+            color: #8b92a7;
+            font-size: 16px;
         }
 
         .input-hint {
-            font-size: 0.8rem;
-            color: var(--text-light);
-            margin-top: 5px;
+            font-size: 13px;
+            color: #6b7280;
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 6px;
+        }
+
+        .input-hint i {
+            font-size: 12px;
         }
 
         .btn-login {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, var(--medium-blue) 0%, var(--light-blue) 100%);
-            color: var(--pure-white);
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border: none;
-            border-radius: 8px;
-            font-family: "Poppins", sans-serif;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
             font-weight: 600;
-            font-size: 1rem;
             cursor: pointer;
-            transition: var(--transition);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
+            transition: all 0.3s ease;
+            margin-top: 8px;
         }
 
         .btn-login:hover {
-            background: linear-gradient(135deg, var(--dark-blue) 0%, var(--medium-blue) 100%);
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(45, 74, 138, 0.3);
+            box-shadow: 0 12px 24px rgba(102, 126, 234, 0.3);
         }
 
         .btn-login:active {
             transform: translateY(0);
         }
 
-        .message {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+        .alert {
+            padding: 14px 16px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             gap: 12px;
-            animation: fadeIn 0.5s;
+            font-size: 14px;
+            margin-bottom: 24px;
         }
 
-        .message i {
-            font-size: 1.2rem;
-        }
-
-        .message.error {
+        .alert-error {
             background: rgba(239, 68, 68, 0.1);
-            color: #991b1b;
-            border-left: 4px solid #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
         }
 
-        .message.success {
-            background: rgba(34, 197, 94, 0.1);
-            color: #166534;
-            border-left: 4px solid #22c55e;
+        /* Right Section - Info Panel */
+        .info-section {
+            flex: 1;
+            background: linear-gradient(135deg, #1e3a8a 0%, #312e81 100%);
+            padding: 60px 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
+        .info-section::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="0.5"/></svg>');
+            background-size: 80px 80px;
+            opacity: 0.4;
+        }
+
+        .info-content {
+            position: relative;
+            z-index: 1;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .info-title {
+            font-size: 36px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 16px;
+            line-height: 1.2;
+        }
+
+        .info-description {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 40px;
+        }
+
+        .features-list {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .feature-item {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .feature-icon i {
+            font-size: 24px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .feature-content {
+            flex: 1;
+        }
+
+        .feature-title {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .feature-description {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .demo-cards {
+            display: grid;
+            gap: 16px;
+        }
+
+        .demo-card-header {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .demo-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .demo-card:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateX(8px);
+        }
+
+        .demo-card-name {
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .role-badge {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .role-admin {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+        }
+
+        .role-user {
+            background: rgba(34, 197, 94, 0.2);
+            color: #86efac;
+        }
+
+        .role-superadmin {
+            background: rgba(168, 85, 247, 0.2);
+            color: #c084fc;
+        }
+
+        .demo-card-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .demo-card-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+
+        .demo-label {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .demo-value {
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            body {
+                flex-direction: column;
             }
 
+            .info-section {
+                order: -1;
+                padding: 40px 20px;
+            }
+
+            .info-title {
+                font-size: 28px;
+            }
+
+            .demo-cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 640px) {
+            .form-title {
+                font-size: 28px;
+            }
+
+            .demo-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
             to {
                 opacity: 1;
                 transform: translateY(0);
             }
         }
 
-        .login-footer {
-            text-align: center;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #e2e8f0;
-            color: var(--text-light);
-            font-size: 0.85rem;
+        .login-container {
+            animation: fadeInUp 0.6s ease-out;
         }
 
-        .login-footer a {
-            color: var(--medium-blue);
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .login-footer a:hover {
-            text-decoration: underline;
-        }
-
-        .demo-credentials {
-            background: rgba(248, 250, 252, 0.8);
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 25px;
-            font-size: 0.85rem;
-        }
-
-        .demo-credentials h4 {
-            color: var(--navy-blue);
-            margin-bottom: 15px;
-            font-size: 0.9rem;
-            text-align: center;
-        }
-
-        .credentials-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 10px;
-        }
-
-        .credential-item {
-            background: var(--pure-white);
-            padding: 12px;
-            border-radius: 6px;
-            border: 1px solid #e2e8f0;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .credential-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-            border-color: var(--light-blue);
-        }
-
-        .credential-name {
-            font-weight: 600;
-            color: var(--navy-blue);
-            margin-bottom: 5px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .credential-name i {
-            color: var(--accent-gold);
-        }
-
-        .credential-details {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .credential-detail {
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .detail-label {
-            color: var(--text-light);
-            font-size: 0.8rem;
-        }
-
-        .detail-value {
-            font-weight: 500;
-            color: var(--text-dark);
-            font-size: 0.85rem;
-        }
-
-        /* Floating particles animation */
-        .particles {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 0;
-            pointer-events: none;
-        }
-
-        .particle {
-            position: absolute;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            animation: float 15s infinite linear;
-        }
-
-        @keyframes float {
-            0% {
-                transform: translateY(100vh) translateX(0) rotate(0deg);
-            }
-
-            100% {
-                transform: translateY(-100px) translateX(100px) rotate(360deg);
-            }
-        }
-
-        /* Responsive */
-        @media (max-width: 480px) {
-            .login-card {
-                padding: 30px 20px;
-            }
-
-            .logo-icon {
-                width: 70px;
-                height: 70px;
-                font-size: 1.8rem;
-            }
-
-            .logo-title {
-                font-size: 1.6rem;
-            }
-
-            .credentials-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        @media (min-width: 768px) {
-            .credentials-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
+        .info-content {
+            animation: fadeInUp 0.6s ease-out 0.2s both;
         }
     </style>
 </head>
 
 <body>
-    <!-- Floating particles -->
-    <div class="particles">
-        <?php for ($i = 0; $i < 20; $i++): ?>
-            <div class="particle" style="
-                width: <?php echo rand(2, 10); ?>px;
-                height: <?php echo rand(2, 10); ?>px;
-                left: <?php echo rand(0, 100); ?>%;
-                animation-delay: <?php echo rand(0, 15); ?>s;
-                animation-duration: <?php echo rand(10, 20); ?>s;">
-            </div>
-        <?php endfor; ?>
-    </div>
-
-    <div class="login-container">
-        <div class="login-card">
-            <!-- Logo & Title -->
-            <div class="logo-section">
-                <div class="logo-icon">
-                    <i class="fas fa-hand-holding-usd"></i>
+    <!-- Left Section - Login -->
+    <div class="login-section">
+        <div class="login-container">
+            <!-- Brand -->
+            <div class="brand">
+                <div class="brand-logo">
+                    <div class="brand-icon">
+                        <i class="fas fa-hand-holding-usd"></i>
+                    </div>
+                    <div class="brand-name">Tontine</div>
                 </div>
-                <h1 class="logo-title">Gestion Tontine</h1>
-                <p class="logo-subtitle">Connexion sécurisée par nom et téléphone</p>
+                <div class="brand-tagline">Gestion simplifiée de votre tontine</div>
             </div>
 
-            <!-- Information -->
-            <div class="login-info">
-                <p>
-                    <i class="fas fa-info-circle"></i>
-                    Connectez-vous avec votre nom d'utilisateur et votre numéro de téléphone camerounais.<br>
-                    <small><strong>Astuce :</strong> Utilisez soit "Nom" seul, soit "Nom Prénom"</small>
-                </p>
+            <!-- Form Header -->
+            <div class="form-header">
+                <h1 class="form-title">Se connecter</h1>
+                <p class="form-subtitle">Entrez vos informations pour accéder à votre compte</p>
             </div>
 
-            <!-- Messages -->
+            <!-- Alert -->
             <?php if ($message): ?>
-                <div class="message <?php echo $message_type; ?>">
-                    <i class="fas fa-<?php echo $message_type === 'error' ? 'exclamation-circle' : 'check-circle'; ?>"></i>
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-circle"></i>
                     <span><?php echo $message; ?></span>
                 </div>
             <?php endif; ?>
 
             <!-- Login Form -->
-            <form method="POST" action="" id="loginForm">
+            <form method="POST" class="login-form" id="loginForm">
                 <div class="form-group">
-                    <label for="username">Nom d'utilisateur</label>
-                    <div class="input-with-icon">
-                        <i class="fas fa-user"></i>
+                    <label class="form-label">Nom d'utilisateur</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-user input-icon"></i>
                         <input type="text"
-                            id="username"
                             name="username"
-                            class="form-control"
-                            required
-                            placeholder="Entrez votre nom (ex: Kouam ou Kouam Dorinal)"
+                            id="username"
+                            class="form-input"
+                            placeholder="Votre nom ou nom complet"
                             value="<?php echo htmlspecialchars($username ?? ''); ?>"
-                            autocomplete="username">
+                            required>
                     </div>
                     <div class="input-hint">
-                        <i class="fas fa-lightbulb"></i>
-                        Utilisez votre nom de famille seul (ex: "Kouam") ou nom complet (ex: "Kouam Dorinal")
+                        <i class="fas fa-info-circle"></i>
+                        Ex: "Kouam" ou "Kouam Dorinal"
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label for="telephone">Numéro de téléphone</label>
-                    <div class="input-with-icon">
-                        <i class="fas fa-phone"></i>
+                    <label class="form-label">Numéro de téléphone</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-phone input-icon"></i>
                         <input type="tel"
-                            id="telephone"
                             name="telephone"
-                            class="form-control"
-                            required
-                            placeholder="Ex: 698179835 ou 677123456"
+                            id="telephone"
+                            class="form-input"
+                            placeholder="698179835"
                             value="<?php echo htmlspecialchars($telephone ?? ''); ?>"
-                            autocomplete="tel">
+                            required>
                     </div>
                     <div class="input-hint">
                         <i class="fas fa-info-circle"></i>
-                        Formats camerounais acceptés: 698179835 (9 chiffres) ou 67712345 (8 chiffres)
+                        Formats: 698179835 (9 chiffres) ou 67712345 (8 chiffres)
                     </div>
                 </div>
 
                 <button type="submit" class="btn-login">
-                    <i class="fas fa-sign-in-alt"></i>
                     Se connecter
+                    <i class="fas fa-arrow-right" style="margin-left: 8px;"></i>
                 </button>
             </form>
+        </div>
+    </div>
 
-            <!-- Demo Credentials -->
-            <div class="demo-credentials">
-                <h4>Membres disponibles :</h4>
-                <div class="credentials-grid">
-                    <?php foreach ($demo_membres as $user): ?>
-                        <div class="credential-item">
-                            <div class="credential-name">
-                                <i class="fas fa-user"></i>
-                                <?php echo htmlspecialchars($user['nom']); ?>
-                                <span style="margin-left: auto; font-size: 0.7rem; background: <?php
-                                                                                                echo $user['role'] === 'admin' ? '#ef4444' : ($user['role'] === 'superadmin' ? '#8b5cf6' : '#10b981');
-                                                                                                ?>; color: white; padding: 2px 8px; border-radius: 10px;">
-                                    <?php echo htmlspecialchars($user['role']); ?>
-                                </span>
-                            </div>
-                            <div class="credential-details">
-                                <div class="credential-detail">
-                                    <span class="detail-label">Nom à utiliser :</span>
-                                    <span class="detail-value"><?php echo htmlspecialchars($user['username']); ?></span>
-                                </div>
-                                <div class="credential-detail">
-                                    <span class="detail-label">Téléphone :</span>
-                                    <span class="detail-value"><?php echo str_replace('+237', '', $user['telephone']); ?></span>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
+    <!-- Right Section - Info -->
+    <div class="info-section">
+        <div class="info-content">
+            <h2 class="info-title">Gérez votre tontine en toute simplicité</h2>
+            <p class="info-description">
+                Accédez à votre espace membre pour suivre vos cotisations, consulter l'historique 
+                et gérer vos transactions en toute sécurité.
+            </p>
+
+            <div class="features-list">
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <div class="feature-content">
+                        <h3 class="feature-title">Sécurité renforcée</h3>
+                        <p class="feature-description">Vos données sont protégées par un système d'authentification sécurisé</p>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Footer -->
-            <div class="login-footer">
-                <p>Version 1.0 • © 2024 Gestion Tontine</p>
-                <p>Système sécurisé - Authentification par téléphone camerounais</p>
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="feature-content">
+                        <h3 class="feature-title">Suivi en temps réel</h3>
+                        <p class="feature-description">Consultez vos cotisations et l'évolution de votre épargne à tout moment</p>
+                    </div>
+                </div>
+
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="feature-content">
+                        <h3 class="feature-title">Gestion collaborative</h3>
+                        <p class="feature-description">Gérez votre tontine avec tous les membres en toute transparence</p>
+                    </div>
+                </div>
+
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <i class="fas fa-mobile-alt"></i>
+                    </div>
+                    <div class="feature-content">
+                        <h3 class="feature-title">Accessible partout</h3>
+                        <p class="feature-description">Accédez à votre compte depuis n'importe quel appareil connecté</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         $(document).ready(function() {
-            // Validation côté client spécifique au Cameroun
-            $('#loginForm').on('submit', function(e) {
-                const username = $('#username').val().trim();
-                const telephone = $('#telephone').val().trim();
-                let isValid = true;
-                let errorMessage = '';
-
-                if (!username) {
-                    errorMessage = "Le nom d'utilisateur est obligatoire";
-                    $('#username').css('border-color', '#ef4444');
-                    isValid = false;
-                }
-
-                if (!telephone) {
-                    errorMessage = errorMessage ? errorMessage + ' et le téléphone est obligatoire' : 'Le numéro de téléphone est obligatoire';
-                    $('#telephone').css('border-color', '#ef4444');
-                    isValid = false;
-                }
-
-                // Validation du format du téléphone camerounais
-                if (telephone && isValid) {
-                    const cleanPhone = telephone.replace(/[\s\-]/g, '');
-                    let phoneRegex;
-
-                    // Pour 9 chiffres (commence par 6 ou 2)
-                    if (cleanPhone.length == 9) {
-                        phoneRegex = /^[62][0-9]{8}$/;
-                    }
-                    // Pour 8 chiffres (commence par 67, 65 ou 69)
-                    else if (cleanPhone.length == 8) {
-                        phoneRegex = /^(67|65|69)[0-9]{6}$/;
-                    } else {
-                        phoneRegex = false;
-                    }
-
-                    if (!phoneRegex) {
-                        errorMessage = 'Format de téléphone invalide. Formats camerounais acceptés :\n' +
-                            '• 677123456 (9 chiffres)\n' +
-                            '• 699987654 (9 chiffres)\n' +
-                            '• 67712345 (8 chiffres)\n' +
-                            '• 65523456 (8 chiffres)\n' +
-                            '• 69012345 (8 chiffres)';
-                        $('#telephone').css('border-color', '#ef4444');
-                        isValid = false;
-                    }
-                }
-
-                if (!isValid) {
-                    e.preventDefault();
-                    showToast('error', 'Erreur de validation', errorMessage || 'Veuillez remplir correctement tous les champs.');
-                }
-            });
-
-            // Réinitialiser les bordures
-            $('input').on('input', function() {
-                $(this).css('border-color', '#e2e8f0');
-            });
-
-            // Auto-format du téléphone camerounais
+            // Auto-format téléphone
             $('#telephone').on('input', function() {
                 let value = $(this).val().replace(/\D/g, '');
-
-                if (value.length > 0) {
-                    // Format pour les numéros camerounais: 677 123 456
-                    if (value.length <= 9) {
-                        value = value.replace(/(\d{3})(?=\d)/g, '$1 ');
-                    }
-                    $(this).val(value.trim());
+                if (value.length > 0 && value.length <= 9) {
+                    value = value.replace(/(\d{3})(?=\d)/g, '$1 ');
                 }
+                $(this).val(value.trim());
             });
 
-            // Focus sur le champ username
+            // Reset border on input
+            $('input').on('input', function() {
+                $(this).css('border-color', 'rgba(255, 255, 255, 0.1)');
+            });
+
             $('#username').focus();
-
-            // Toast messages
-            function showToast(icon, title, text, timer = 4000) {
-                Swal.fire({
-                    icon: icon,
-                    title: title,
-                    text: text,
-                    toast: true,
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: timer,
-                    timerProgressBar: true,
-                    background: 'var(--pure-white)',
-                    color: 'var(--text-dark)'
-                });
-            }
-
-            <?php if ($message_type === 'error'): ?>
-                showToast('error', 'Erreur de connexion', '<?php echo addslashes($message); ?>');
-            <?php endif; ?>
-
-            // Animation des cartes d'utilisateurs
-            $('.credential-item').each(function(index) {
-                $(this).css('animation-delay', (index * 0.1) + 's');
-                $(this).addClass('animate__animated animate__fadeIn');
-            });
-
-            // Sélection rapide d'un utilisateur
-            $('.credential-item').on('click', function() {
-                const nom = $(this).find('.detail-value').first().text().trim();
-                const phone = $(this).find('.detail-value').last().text().trim();
-
-                $('#username').val(nom).css('border-color', '#22c55e');
-                $('#telephone').val(phone).css('border-color', '#22c55e');
-
-                showToast('info', 'Champs remplis', 'Les informations ont été pré-remplies.');
-            });
         });
     </script>
 </body>

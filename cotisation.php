@@ -229,13 +229,6 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Paiement de Cotisation | Gestion de Tontine</title>
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0f1a3a">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="TontineApp">
-<link rel="apple-touch-icon" href="/icons/icon-192x192.png">
-<link rel="icon" type="image/png" href="/icons/icon-192x192.png">
 
 <script src="/register-sw.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -513,7 +506,7 @@ try {
                     seanceSelect.classList.remove('bg-gray-50');
                     
                     // Charger les séances via AJAX
-                    fetch('get_seances.php?tontine_id=' + tontineId + '&user_id=<?php echo $user_id; ?>')
+                    fetch('./fonction/get_seances.php?tontine_id=' + tontineId + '&user_id=<?php echo $user_id; ?>')
                         .then(response => response.json())
                         .then(data => {
                             seanceSelect.innerHTML = '<option value="">-- Choisir une séance --</option>';

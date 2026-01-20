@@ -1,13 +1,7 @@
 <?php
-/**
- * Script à exécuter via cron job quotidien
- * Exemple: 0 0 * * * php /chemin/vers/cron_penalites.php
- */
-
 require_once __DIR__ . '/fonctions/config.php';
 require_once __DIR__ . '/fonctions/apply_penalty.php';
 
-// Démarrer la session (si nécessaire)
 session_start();
 
 // Journalisation
