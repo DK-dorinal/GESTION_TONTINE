@@ -1,11 +1,11 @@
-
 <?php
 session_start();
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// @include './fonctions/config.php';
+// Inclure le fichier de configuration PDO
+require_once './fonctions/config.php';
 
 // Rediriger si déjà connecté
 if (isset($_SESSION['user_id'])) {
@@ -75,19 +75,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($errors)) {
         $telephone = normalizePhone($telephone);
-        $conn = new mysqli('localhost', 'root', '', 'gestion_tontine');
-
-        if ($conn->connect_error) {
-            $errors[] = "Erreur de connexion à la base de données";
-        } else {
+        
+        try {
+            // Utiliser PDO depuis config.php
+            global $pdo;
+            
             $sql = "SELECT * FROM membre WHERE telephone = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("s", $telephone);
-            $stmt->execute();
-            $result = $stmt->get_result();
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$telephone]);
+            $membre = $stmt->fetch();
 
-            if ($result->num_rows > 0) {
-                $membre = $result->fetch_assoc();
+            if ($membre) {
                 $nom_complet = $membre['nom'] . ' ' . $membre['prenom'];
                 $nom_simple = $membre['nom'];
 
@@ -107,9 +105,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['login_method'] = 'nom_telephone';
                     $_SESSION['welcome_message'] = "Bienvenue " . $nom_complet . " !";
 
-                    $stmt->close();
-                    $conn->close();
-
                     header('Location: dashboard.php');
                     exit();
                 } else {
@@ -118,11 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $errors[] = "Numéro de téléphone non trouvé";
             }
-
-            if (isset($stmt)) {
-                $stmt->close();
-            }
-            $conn->close();
+        } catch (PDOException $e) {
+            $errors[] = "Erreur de connexion à la base de données: " . $e->getMessage();
         }
     }
 
@@ -130,45 +122,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = implode("<br>", $errors);
         $message_type = "error";
     }
-}
-
-// Récupérer quelques membres
-$conn = new mysqli('localhost', 'root', '', 'gestion_tontine');
-$demo_membres = [];
-if (!$conn->connect_error) {
-    $sql = "SELECT id_membre, nom, prenom, telephone, role FROM membre LIMIT 4";
-    $result = $conn->query($sql);
-    if ($result) {
-        while ($row = $result->fetch_assoc()) {
-            $demo_membres[] = [
-                'id' => $row['id_membre'],
-                'nom' => $row['nom'] . ' ' . $row['prenom'],
-                'username' => $row['nom'],
-                'telephone' => $row['telephone'],
-                'role' => $row['role']
-            ];
-        }
-    }
-    $conn->close();
-}
-
-if (empty($demo_membres)) {
-    $demo_membres = [
-        [
-            'id' => 1,
-            'nom' => 'Kouam Dorinal',
-            'username' => 'Kouam',
-            'telephone' => '+237698179835',
-            'role' => 'user'
-        ],
-        [
-            'id' => 2,
-            'nom' => 'Admin Système',
-            'username' => 'Admin',
-            'telephone' => '+237677123456',
-            'role' => 'admin'
-        ]
-    ];
 }
 ?>
 
@@ -181,6 +134,24 @@ if (empty($demo_membres)) {
     <title>Connexion - Gestion Tontine</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        :root {
+            --navy-blue: #0f1a3a;
+            --dark-blue: #1a2b55;
+            --medium-blue: #2d4a8a;
+            --light-blue: #3a5fc0;
+            --accent-gold: #d4af37;
+            --accent-light: #e6c34d;
+            --pure-white: #ffffff;
+            --text-dark: #1e293b;
+            --text-light: #64748b;
+            --bg-light: #f8fafc;
+            --glass-bg: rgba(255, 255, 255, 0.95);
+            --shadow-light: rgba(15, 26, 58, 0.1);
+            --shadow-medium: rgba(15, 26, 58, 0.2);
+            --border-radius: 16px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -189,11 +160,12 @@ if (empty($demo_membres)) {
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
-            background: #0a0e27;
+            background: linear-gradient(135deg, var(--navy-blue) 0%, var(--dark-blue) 100%);
             min-height: 100vh;
             display: flex;
             position: relative;
             overflow-x: hidden;
+            color: var(--text-dark);
         }
 
         /* Left Section - Login Form */
@@ -202,85 +174,109 @@ if (empty($demo_membres)) {
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 40px 20px;
+            padding: clamp(20px, 5vw, 60px) clamp(20px, 4vw, 40px);
             position: relative;
             z-index: 10;
+            min-height: 100vh;
         }
 
         .login-container {
             width: 100%;
-            max-width: 440px;
+            max-width: 480px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-radius: var(--border-radius);
+            padding: clamp(30px, 5vw, 50px);
+            box-shadow: 0 20px 40px var(--shadow-medium),
+                        0 0 0 1px rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .brand {
-            margin-bottom: 48px;
+            margin-bottom: clamp(30px, 6vw, 48px);
+            text-align: center;
         }
 
         .brand-logo {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 12px;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 16px;
         }
 
         .brand-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 12px;
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-light) 100%);
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-size: 24px;
+            color: var(--pure-white);
+            font-size: 28px;
+            box-shadow: 0 8px 20px rgba(212, 175, 55, 0.3);
         }
 
         .brand-name {
-            font-size: 28px;
-            font-weight: 700;
-            color: #ffffff;
+            font-size: clamp(28px, 4vw, 36px);
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--navy-blue) 0%, var(--medium-blue) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             letter-spacing: -0.5px;
         }
 
         .brand-tagline {
-            color: #8b92a7;
-            font-size: 15px;
-            margin-left: 60px;
+            color: var(--text-light);
+            font-size: clamp(14px, 2vw, 16px);
+            margin-top: 8px;
         }
 
         .form-header {
-            margin-bottom: 32px;
+            margin-bottom: clamp(24px, 5vw, 40px);
+            text-align: center;
         }
 
         .form-title {
-            font-size: 32px;
+            font-size: clamp(28px, 4vw, 36px);
             font-weight: 700;
-            color: #ffffff;
-            margin-bottom: 8px;
+            color: var(--navy-blue);
+            margin-bottom: 12px;
             letter-spacing: -0.5px;
+            line-height: 1.2;
         }
 
         .form-subtitle {
-            color: #8b92a7;
-            font-size: 15px;
+            color: var(--text-light);
+            font-size: clamp(14px, 2vw, 16px);
+            line-height: 1.5;
         }
 
         .login-form {
             display: flex;
             flex-direction: column;
-            gap: 24px;
+            gap: clamp(20px, 3vw, 28px);
         }
 
         .form-group {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
         }
 
         .form-label {
-            color: #c7cad9;
+            color: var(--navy-blue);
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .form-label i {
+            color: var(--accent-gold);
+            font-size: 12px;
         }
 
         .input-wrapper {
@@ -289,95 +285,114 @@ if (empty($demo_membres)) {
 
         .form-input {
             width: 100%;
-            padding: 14px 16px 14px 44px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 18px 20px 18px 52px;
+            background: var(--pure-white);
+            border: 2px solid rgba(26, 43, 85, 0.1);
             border-radius: 12px;
-            color: #ffffff;
-            font-size: 15px;
-            transition: all 0.3s ease;
+            color: var(--navy-blue);
+            font-size: 16px;
+            transition: var(--transition);
+            font-weight: 500;
         }
 
         .form-input:focus {
             outline: none;
-            background: rgba(255, 255, 255, 0.08);
-            border-color: #667eea;
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            border-color: var(--accent-gold);
+            box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.1);
+            transform: translateY(-1px);
         }
 
         .form-input::placeholder {
-            color: #6b7280;
+            color: var(--text-light);
+            opacity: 0.7;
         }
 
         .input-icon {
             position: absolute;
-            left: 16px;
+            left: 20px;
             top: 50%;
             transform: translateY(-50%);
-            color: #8b92a7;
-            font-size: 16px;
+            color: var(--accent-gold);
+            font-size: 18px;
         }
 
         .input-hint {
             font-size: 13px;
-            color: #6b7280;
+            color: var(--text-light);
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(248, 250, 252, 0.8);
+            border-radius: 8px;
+            margin-top: 4px;
         }
 
         .input-hint i {
-            font-size: 12px;
+            color: var(--accent-gold);
+            font-size: 14px;
         }
 
         .btn-login {
-            padding: 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 18px 24px;
+            background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-light) 100%);
             border: none;
             border-radius: 12px;
-            color: white;
+            color: var(--pure-white);
             font-size: 16px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 8px;
+            transition: var(--transition);
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            letter-spacing: 0.5px;
         }
 
         .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 24px rgba(102, 126, 234, 0.3);
+            transform: translateY(-3px);
+            box-shadow: 0 16px 32px rgba(212, 175, 55, 0.25);
         }
 
         .btn-login:active {
-            transform: translateY(0);
+            transform: translateY(-1px);
+        }
+
+        .btn-login:focus {
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.2);
         }
 
         .alert {
-            padding: 14px 16px;
+            padding: 18px 20px;
             border-radius: 12px;
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-size: 14px;
-            margin-bottom: 24px;
+            gap: 14px;
+            font-size: 15px;
+            margin-bottom: 28px;
+            background: rgba(239, 68, 68, 0.08);
+            border: 2px solid rgba(239, 68, 68, 0.2);
+            color: #dc2626;
         }
 
-        .alert-error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            color: #fca5a5;
+        .alert i {
+            font-size: 20px;
+            flex-shrink: 0;
         }
 
         /* Right Section - Info Panel */
         .info-section {
             flex: 1;
-            background: linear-gradient(135deg, #1e3a8a 0%, #312e81 100%);
-            padding: 60px 40px;
+            background: linear-gradient(135deg, var(--medium-blue) 0%, var(--light-blue) 100%);
+            padding: clamp(30px, 5vw, 60px) clamp(20px, 4vw, 40px);
             display: flex;
-            flex-direction: column;
-            justify-content: center;
+            align-items: center;
             position: relative;
             overflow: hidden;
+            min-height: 100vh;
         }
 
         .info-section::before {
@@ -387,60 +402,83 @@ if (empty($demo_membres)) {
             left: 0;
             right: 0;
             bottom: 0;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="0.5"/></svg>');
-            background-size: 80px 80px;
-            opacity: 0.4;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+            pointer-events: none;
         }
 
         .info-content {
             position: relative;
             z-index: 1;
-            max-width: 500px;
+            max-width: 600px;
             margin: 0 auto;
+            width: 100%;
         }
 
         .info-title {
-            font-size: 36px;
-            font-weight: 700;
-            color: #ffffff;
-            margin-bottom: 16px;
-            line-height: 1.2;
+            font-size: clamp(32px, 5vw, 48px);
+            font-weight: 800;
+            color: var(--pure-white);
+            margin-bottom: 24px;
+            line-height: 1.1;
+            letter-spacing: -0.5px;
         }
 
         .info-description {
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 16px;
-            line-height: 1.6;
-            margin-bottom: 40px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: clamp(16px, 2vw, 18px);
+            line-height: 1.7;
+            margin-bottom: clamp(40px, 6vw, 60px);
+            font-weight: 300;
         }
 
         .features-list {
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 28px;
         }
 
         .feature-item {
             display: flex;
             gap: 20px;
             align-items: flex-start;
+            padding: 24px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: var(--border-radius);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: var(--transition);
+        }
+
+        .feature-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.3);
         }
 
         .feature-icon {
-            width: 56px;
-            height: 56px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.25);
             border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
+            transition: var(--transition);
+        }
+
+        .feature-item:hover .feature-icon {
+            background: var(--accent-gold);
+            border-color: var(--accent-gold);
+            transform: scale(1.1);
         }
 
         .feature-icon i {
-            font-size: 24px;
-            color: rgba(255, 255, 255, 0.9);
+            font-size: 26px;
+            color: var(--pure-white);
         }
 
         .feature-content {
@@ -448,100 +486,16 @@ if (empty($demo_membres)) {
         }
 
         .feature-title {
-            color: #ffffff;
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 6px;
+            color: var(--pure-white);
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 10px;
         }
 
         .feature-description {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
-        .demo-cards {
-            display: grid;
-            gap: 16px;
-        }
-
-        .demo-card-header {
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .demo-card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 16px;
-            padding: 20px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .demo-card:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateX(8px);
-        }
-
-        .demo-card-name {
-            color: #ffffff;
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .role-badge {
-            font-size: 11px;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .role-admin {
-            background: rgba(239, 68, 68, 0.2);
-            color: #fca5a5;
-        }
-
-        .role-user {
-            background: rgba(34, 197, 94, 0.2);
-            color: #86efac;
-        }
-
-        .role-superadmin {
-            background: rgba(168, 85, 247, 0.2);
-            color: #c084fc;
-        }
-
-        .demo-card-info {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .demo-card-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 13px;
-        }
-
-        .demo-label {
-            color: rgba(255, 255, 255, 0.6);
-        }
-
-        .demo-value {
-            color: rgba(255, 255, 255, 0.9);
-            font-weight: 500;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 15px;
+            line-height: 1.6;
         }
 
         /* Responsive */
@@ -550,27 +504,114 @@ if (empty($demo_membres)) {
                 flex-direction: column;
             }
 
-            .info-section {
-                order: -1;
+            .login-section {
+                order: 2;
+                min-height: auto;
                 padding: 40px 20px;
+            }
+
+            .login-container {
+                max-width: 600px;
+                margin: 0 auto;
+            }
+
+            .info-section {
+                order: 1;
+                min-height: auto;
+                padding: 60px 20px;
+            }
+
+            .info-content {
+                max-width: 800px;
+            }
+
+            .features-list {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .login-container {
+                padding: 30px 24px;
+            }
+
+            .info-title {
+                font-size: 36px;
+            }
+
+            .features-list {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .feature-item {
+                padding: 20px;
+            }
+
+            .brand-logo {
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .brand-name {
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 24px 20px;
+            }
+
+            .form-input {
+                padding: 16px 16px 16px 48px;
+            }
+
+            .input-icon {
+                left: 16px;
+            }
+
+            .btn-login {
+                padding: 16px 20px;
+            }
+
+            .feature-item {
+                flex-direction: column;
+                text-align: center;
+                align-items: center;
+            }
+
+            .feature-icon {
+                width: 56px;
+                height: 56px;
+            }
+
+            .feature-icon i {
+                font-size: 24px;
             }
 
             .info-title {
                 font-size: 28px;
             }
 
-            .demo-cards {
-                grid-template-columns: repeat(2, 1fr);
+            .info-description {
+                font-size: 16px;
             }
         }
 
-        @media (max-width: 640px) {
-            .form-title {
-                font-size: 28px;
+        @media (max-width: 360px) {
+            .login-container {
+                padding: 20px 16px;
             }
 
-            .demo-cards {
-                grid-template-columns: 1fr;
+            .form-input {
+                padding: 14px 14px 14px 44px;
+                font-size: 15px;
+            }
+
+            .btn-login {
+                padding: 14px 16px;
+                font-size: 15px;
             }
         }
 
@@ -578,7 +619,7 @@ if (empty($demo_membres)) {
         @keyframes fadeInUp {
             from {
                 opacity: 0;
-                transform: translateY(20px);
+                transform: translateY(30px);
             }
             to {
                 opacity: 1;
@@ -593,6 +634,37 @@ if (empty($demo_membres)) {
         .info-content {
             animation: fadeInUp 0.6s ease-out 0.2s both;
         }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .feature-item:hover .feature-icon {
+            animation: float 0.6s ease-in-out;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-gold);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-light);
+        }
     </style>
 </head>
 
@@ -606,20 +678,20 @@ if (empty($demo_membres)) {
                     <div class="brand-icon">
                         <i class="fas fa-hand-holding-usd"></i>
                     </div>
-                    <div class="brand-name">Tontine</div>
+                    <div class="brand-name">TontinePro</div>
                 </div>
-                <div class="brand-tagline">Gestion simplifiée de votre tontine</div>
+                <div class="brand-tagline">La solution professionnelle pour gérer votre tontine</div>
             </div>
 
             <!-- Form Header -->
             <div class="form-header">
-                <h1 class="form-title">Se connecter</h1>
-                <p class="form-subtitle">Entrez vos informations pour accéder à votre compte</p>
+                <h1 class="form-title">Connexion</h1>
+                <p class="form-subtitle">Entrez vos identifiants pour accéder à votre espace membre</p>
             </div>
 
             <!-- Alert -->
             <?php if ($message): ?>
-                <div class="alert alert-error">
+                <div class="alert">
                     <i class="fas fa-exclamation-circle"></i>
                     <span><?php echo $message; ?></span>
                 </div>
@@ -628,7 +700,10 @@ if (empty($demo_membres)) {
             <!-- Login Form -->
             <form method="POST" class="login-form" id="loginForm">
                 <div class="form-group">
-                    <label class="form-label">Nom d'utilisateur</label>
+                    <label class="form-label">
+                        <i class="fas fa-user-circle"></i>
+                        Nom d'utilisateur
+                    </label>
                     <div class="input-wrapper">
                         <i class="fas fa-user input-icon"></i>
                         <input type="text"
@@ -637,35 +712,40 @@ if (empty($demo_membres)) {
                             class="form-input"
                             placeholder="Votre nom ou nom complet"
                             value="<?php echo htmlspecialchars($username ?? ''); ?>"
-                            required>
+                            required
+                            autocomplete="username">
                     </div>
                     <div class="input-hint">
-                        <i class="fas fa-info-circle"></i>
-                        Ex: "Kouam" ou "Kouam Dorinal"
+                        <i class="fas fa-lightbulb"></i>
+                        Utilisez votre nom de famille ou votre nom complet
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Numéro de téléphone</label>
+                    <label class="form-label">
+                        <i class="fas fa-phone-alt"></i>
+                        Numéro de téléphone
+                    </label>
                     <div class="input-wrapper">
-                        <i class="fas fa-phone input-icon"></i>
+                        <i class="fas fa-mobile-alt input-icon"></i>
                         <input type="tel"
                             name="telephone"
                             id="telephone"
                             class="form-input"
-                            placeholder="698179835"
+                            placeholder="Ex: 698179835"
                             value="<?php echo htmlspecialchars($telephone ?? ''); ?>"
-                            required>
+                            required
+                            autocomplete="tel">
                     </div>
                     <div class="input-hint">
                         <i class="fas fa-info-circle"></i>
-                        Formats: 698179835 (9 chiffres) ou 67712345 (8 chiffres)
+                        Formats acceptés: 9 chiffres (6xxxxxxxx) ou 8 chiffres (67xxxxxx, 65xxxxxx, 69xxxxxx)
                     </div>
                 </div>
 
                 <button type="submit" class="btn-login">
                     Se connecter
-                    <i class="fas fa-arrow-right" style="margin-left: 8px;"></i>
+                    <i class="fas fa-arrow-right"></i>
                 </button>
             </form>
         </div>
@@ -674,10 +754,10 @@ if (empty($demo_membres)) {
     <!-- Right Section - Info -->
     <div class="info-section">
         <div class="info-content">
-            <h2 class="info-title">Gérez votre tontine en toute simplicité</h2>
+            <h2 class="info-title">Simplifiez la gestion de votre tontine</h2>
             <p class="info-description">
-                Accédez à votre espace membre pour suivre vos cotisations, consulter l'historique 
-                et gérer vos transactions en toute sécurité.
+                Une plateforme complète pour gérer vos cotisations, suivre les paiements et 
+                maintenir la transparence entre tous les membres de votre groupe.
             </p>
 
             <div class="features-list">
@@ -686,38 +766,38 @@ if (empty($demo_membres)) {
                         <i class="fas fa-shield-alt"></i>
                     </div>
                     <div class="feature-content">
-                        <h3 class="feature-title">Sécurité renforcée</h3>
-                        <p class="feature-description">Vos données sont protégées par un système d'authentification sécurisé</p>
+                        <h3 class="feature-title">Sécurité maximale</h3>
+                        <p class="feature-description">Authentification à deux facteurs et chiffrement des données pour une protection optimale</p>
                     </div>
                 </div>
 
                 <div class="feature-item">
                     <div class="feature-icon">
-                        <i class="fas fa-chart-line"></i>
+                        <i class="fas fa-chart-pie"></i>
                     </div>
                     <div class="feature-content">
-                        <h3 class="feature-title">Suivi en temps réel</h3>
-                        <p class="feature-description">Consultez vos cotisations et l'évolution de votre épargne à tout moment</p>
+                        <h3 class="feature-title">Tableau de bord complet</h3>
+                        <p class="feature-description">Visualisez vos finances avec des graphiques clairs et des rapports détaillés</p>
                     </div>
                 </div>
 
                 <div class="feature-item">
                     <div class="feature-icon">
-                        <i class="fas fa-users"></i>
+                        <i class="fas fa-bell"></i>
                     </div>
                     <div class="feature-content">
-                        <h3 class="feature-title">Gestion collaborative</h3>
-                        <p class="feature-description">Gérez votre tontine avec tous les membres en toute transparence</p>
+                        <h3 class="feature-title">Notifications intelligentes</h3>
+                        <p class="feature-description">Recevez des alertes pour les échéances de paiement et les activités importantes</p>
                     </div>
                 </div>
 
                 <div class="feature-item">
                     <div class="feature-icon">
-                        <i class="fas fa-mobile-alt"></i>
+                        <i class="fas fa-file-invoice-dollar"></i>
                     </div>
                     <div class="feature-content">
-                        <h3 class="feature-title">Accessible partout</h3>
-                        <p class="feature-description">Accédez à votre compte depuis n'importe quel appareil connecté</p>
+                        <h3 class="feature-title">Gestion automatisée</h3>
+                        <p class="feature-description">Générez automatiquement les rapports et suivez l'historique des transactions</p>
                     </div>
                 </div>
             </div>
@@ -736,12 +816,48 @@ if (empty($demo_membres)) {
                 $(this).val(value.trim());
             });
 
-            // Reset border on input
-            $('input').on('input', function() {
-                $(this).css('border-color', 'rgba(255, 255, 255, 0.1)');
+            // Animation au focus
+            $('.form-input').on('focus', function() {
+                $(this).parent().css('transform', 'translateY(-2px)');
+            }).on('blur', function() {
+                $(this).parent().css('transform', 'translateY(0)');
             });
 
-            $('#username').focus();
+            // Focus sur le premier champ
+            setTimeout(() => {
+                $('#username').focus();
+            }, 300);
+
+            // Effet de validation
+            $('#loginForm').on('submit', function(e) {
+                const inputs = $('.form-input');
+                let isValid = true;
+                
+                inputs.each(function() {
+                    if (!$(this).val().trim()) {
+                        $(this).css({
+                            'border-color': '#ef4444',
+                            'box-shadow': '0 0 0 4px rgba(239, 68, 68, 0.1)'
+                        });
+                        isValid = false;
+                    }
+                });
+                
+                if (!isValid) {
+                    e.preventDefault();
+                    $('html, body').animate({
+                        scrollTop: $('.alert').offset().top - 100
+                    }, 500);
+                }
+            });
+
+            // Reset validation style on input
+            $('.form-input').on('input', function() {
+                $(this).css({
+                    'border-color': 'rgba(26, 43, 85, 0.1)',
+                    'box-shadow': 'none'
+                });
+            });
         });
     </script>
 </body>
