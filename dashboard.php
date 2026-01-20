@@ -282,23 +282,37 @@ $is_mobile = isMobile();
             flex-direction: column;
             padding: 20px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
+            gap: 10px;
         }
 
-        .logout-btn {
+        .logout-btn, .share-btn {
             display: flex;
             align-items: center;
             gap: 12px;
             padding: 14px 16px;
-            background: rgba(239, 68, 68, 0.2);
-            color: #fca5a5;
             text-decoration: none;
             border-radius: 10px;
             transition: var(--transition);
             font-weight: 500;
         }
 
+        .logout-btn {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+        }
+
         .logout-btn:hover {
             background: rgba(239, 68, 68, 0.3);
+            color: white;
+        }
+
+        .share-btn {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+        }
+
+        .share-btn:hover {
+            background: rgba(59, 130, 246, 0.3);
             color: white;
         }
 
@@ -778,6 +792,178 @@ $is_mobile = isMobile();
             border-bottom: none;
         }
 
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, var(--navy-blue), var(--dark-blue));
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            position: relative;
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            color: white;
+            font-size: 1.3rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .close-modal {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .close-modal:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: rotate(90deg);
+        }
+
+        .share-options {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .share-option {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: white;
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .share-option:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(5px);
+        }
+
+        .share-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+        }
+
+        .share-info h4 {
+            font-size: 1rem;
+            margin-bottom: 3px;
+        }
+
+        .share-info p {
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        .share-link-container {
+            margin-top: 20px;
+        }
+
+        .share-link-label {
+            color: white;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .share-link-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        .share-link-input {
+            flex: 1;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: white;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .copy-btn {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-light));
+            border: none;
+            border-radius: 10px;
+            color: var(--navy-blue);
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .copy-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.4);
+        }
+
+        .copy-success {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 8px;
+            color: #4ade80;
+            font-size: 0.85rem;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+
         /* Mobile Navigation */
         .mobile-nav {
             display: none;
@@ -1030,6 +1216,10 @@ $is_mobile = isMobile();
             </nav>
 
             <div class="sidebar-footer">
+                <a href="#" class="share-btn" onclick="openShareModal()">
+                    <i class="fas fa-share-alt"></i>
+                    <span>Partager</span>
+                </a>
                 <a href="logout.php" class="logout-btn">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Déconnexion</span>
@@ -1055,6 +1245,12 @@ $is_mobile = isMobile();
                         <div class="role-badge">
                             <?php echo $is_admin ? 'Admin' : 'Membre'; ?>
                         </div>
+                        <?php if (!$is_admin): ?>
+                            <button class="share-btn" onclick="openShareModal()" style="background: linear-gradient(135deg, var(--medium-blue), var(--light-blue)); color: white; border: none; padding: 10px 16px; border-radius: 10px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-share-alt"></i>
+                                Partager
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
             </header>
@@ -1449,6 +1645,64 @@ $is_mobile = isMobile();
         </main>
     </div>
 
+    <!-- Share Modal -->
+    <div id="shareModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="fas fa-share-alt"></i>
+                    Partager l'Application
+                </h2>
+                <button class="close-modal" onclick="closeShareModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="share-options">
+                <a href="#" class="share-option" onclick="shareOnWhatsApp()">
+                    <div class="share-icon" style="background: linear-gradient(135deg, #25D366, #128C7E);">
+                        <i class="fab fa-whatsapp"></i>
+                    </div>
+                    <div class="share-info">
+                        <h4>WhatsApp</h4>
+                        <p>Partager via WhatsApp</p>
+                    </div>
+                </a>
+                <a href="#" class="share-option" onclick="shareOnFacebook()">
+                    <div class="share-icon" style="background: linear-gradient(135deg, #1877F2, #0D5F9E);">
+                        <i class="fab fa-facebook-f"></i>
+                    </div>
+                    <div class="share-info">
+                        <h4>Facebook</h4>
+                        <p>Partager sur Facebook</p>
+                    </div>
+                </a>
+                <a href="#" class="share-option" onclick="copyLink()">
+                    <div class="share-icon" style="background: linear-gradient(135deg, var(--accent-gold), var(--accent-light));">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <div class="share-info">
+                        <h4>Copier le lien</h4>
+                        <p>Copier le lien de partage</p>
+                    </div>
+                </a>
+            </div>
+            <div class="share-link-container">
+                <label class="share-link-label">Lien de partage :</label>
+                <div class="share-link-wrapper">
+                    <input type="text" id="shareLink" class="share-link-input" value="<?php echo 'https://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']); ?>" readonly>
+                    <button class="copy-btn" onclick="copyLink()">
+                        <i class="fas fa-copy"></i>
+                        Copier
+                    </button>
+                </div>
+                <div id="copySuccess" class="copy-success">
+                    <i class="fas fa-check-circle"></i>
+                    Lien copié dans le presse-papiers !
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Mobile Navigation -->
     <nav class="mobile-nav">
         <div class="mobile-nav-container">
@@ -1469,6 +1723,10 @@ $is_mobile = isMobile();
                     <i class="fas fa-calendar-alt mobile-nav-icon"></i>
                     <span class="mobile-nav-text">Séances</span>
                 </a>
+                <a href="#" class="mobile-nav-item" onclick="openShareModal()">
+                    <i class="fas fa-share-alt mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Partager</span>
+                </a>
             <?php else: ?>
                 <a href="cotisation.php" class="mobile-nav-item">
                     <i class="fas fa-money-bill-wave mobile-nav-icon"></i>
@@ -1481,6 +1739,10 @@ $is_mobile = isMobile();
                 <a href="credit.php" class="mobile-nav-item">
                     <i class="fas fa-credit-card mobile-nav-icon"></i>
                     <span class="mobile-nav-text">Crédits</span>
+                </a>
+                <a href="#" class="mobile-nav-item" onclick="openShareModal()">
+                    <i class="fas fa-share-alt mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Partager</span>
                 </a>
             <?php endif; ?>
             <a href="logout.php" class="mobile-nav-item">
@@ -1529,6 +1791,52 @@ $is_mobile = isMobile();
                     window.location.href = 'index.php?expired=1';
                 });
         }
+
+        // Fonctions de partage
+        function openShareModal() {
+            document.getElementById('shareModal').style.display = 'flex';
+        }
+
+        function closeShareModal() {
+            document.getElementById('shareModal').style.display = 'none';
+            document.getElementById('copySuccess').style.display = 'none';
+        }
+
+        function copyLink() {
+            const linkInput = document.getElementById('shareLink');
+            linkInput.select();
+            linkInput.setSelectionRange(0, 99999);
+            
+            navigator.clipboard.writeText(linkInput.value).then(() => {
+                const successMessage = document.getElementById('copySuccess');
+                successMessage.style.display = 'flex';
+                
+                setTimeout(() => {
+                    successMessage.style.display = 'none';
+                }, 3000);
+            }).catch(err => {
+                console.error('Erreur lors de la copie: ', err);
+            });
+        }
+
+        function shareOnWhatsApp() {
+            const message = encodeURIComponent('Découvrez cette application de gestion de tontines ! ' + window.location.href);
+            window.open(`https://wa.me/?text=${message}`, '_blank');
+            closeShareModal();
+        }
+
+        function shareOnFacebook() {
+            const url = encodeURIComponent(window.location.href);
+            window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank', 'width=600,height=400');
+            closeShareModal();
+        }
+
+        // Fermer la modal en cliquant à l'extérieur
+        document.getElementById('shareModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeShareModal();
+            }
+        });
 
         // Détecter l'activité utilisateur
         document.addEventListener('DOMContentLoaded', () => {
