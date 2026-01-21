@@ -449,6 +449,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-radius: var(--border-radius);
             border: 1px solid rgba(255, 255, 255, 0.15);
             transition: var(--transition);
+            flex-direction: column;
+            align-items: center;
         }
 
         .feature-item:hover {
@@ -483,6 +485,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .feature-content {
             flex: 1;
+
         }
 
         .feature-title {
@@ -490,12 +493,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 20px;
             font-weight: 700;
             margin-bottom: 10px;
+            text-align: center;
         }
 
         .feature-description {
             color: rgba(255, 255, 255, 0.8);
             font-size: 15px;
             line-height: 1.6;
+            text-align: justify;
         }
 
         /* Responsive */
