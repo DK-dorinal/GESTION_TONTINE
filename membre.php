@@ -28,11 +28,12 @@ $form_data = [
     'adresse' => ''
 ];
 
-// --- TRAITEMENT DE L'EXPORT PDF ---
+// --- TRAITEMENT DE L'EXPORT PDF avec TCPDF ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['export_pdf'])) {
     try {
+        // Vérification rapide s'il y a des données
         $stmt = $pdo->query("SELECT COUNT(*) as total FROM membre");
-        $result = $stmt->fetch();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($result['total'] == 0) {
             $_SESSION['flash_message'] = "Aucun membre à exporter.";
@@ -40,143 +41,139 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['export_pdf'])) {
             header("Location: " . $_SERVER['PHP_SELF']);
             exit();
         }
-    } catch (PDOException $e) {
-        $_SESSION['flash_message'] = "Erreur lors de la vérification des membres: " . $e->getMessage();
-        $_SESSION['flash_type'] = "error";
-        header("Location: " . $_SERVER['PHP_SELF']);
-        exit();
-    }
-    
-    try {
+
+        // Chargement de TCPDF
+        require_once './lib/tcpdf/tcpdf.php';   // ← ADAPTE LE CHEMIN ICI !
+
+        // Création du document PDF
+        $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+
+        // Désactiver les en-têtes et pieds de page par défaut
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+
+        // Ajout d'une page
+        $pdf->AddPage();
+
+        // Police par défaut + taille
+        $pdf->SetFont('helvetica', '', 10);
+
+        // =====================================
+        //          EN-TÊTE DU DOCUMENT
+        // =====================================
+        $pdf->SetY(15);
+        $pdf->SetFont('helvetica', 'B', 22);
+        $pdf->SetTextColor(15, 26, 58); // navy-blue
+        $pdf->Cell(0, 10, 'TONTINEPRO', 0, 1, 'C');
+
+        $pdf->SetFont('helvetica', '', 11);
+        $pdf->SetTextColor(212, 175, 55); // gold
+        $pdf->Cell(0, 8, 'Système de Gestion de Tontine', 0, 1, 'C');
+
+        $pdf->Ln(8);
+
+        $pdf->SetFont('helvetica', 'B', 16);
+        $pdf->SetTextColor(45, 74, 138);
+        $pdf->Cell(0, 10, 'LISTE DES MEMBRES', 0, 1, 'C');
+
+        $pdf->SetFont('helvetica', '', 10);
+        $pdf->SetTextColor(100);
+        $pdf->Cell(0, 6, 'Date d\'export : ' . date('d/m/Y à H:i'), 0, 1, 'C');
+        $pdf->Cell(0, 6, 'Généré par : ' . ($_SESSION['nom'] ?? 'Administrateur'), 0, 1, 'C');
+
+        $pdf->Ln(10);
+
+        // =====================================
+        //          STATISTIQUES
+        // =====================================
         $stmt = $pdo->query("SELECT * FROM membre ORDER BY nom, prenom");
-        $membres_pdf = $stmt->fetchAll();
-        
-        // Créer le contenu HTML du PDF
-        $html = '
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Liste des Membres - Tontine</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                h1 { color: #0f1a3a; text-align: center; border-bottom: 3px solid #d4af37; padding-bottom: 10px; }
-                h2 { color: #2d4a8a; font-size: 14px; text-align: center; }
-                .header-info { text-align: center; margin-bottom: 20px; color: #666; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th { background-color: #0f1a3a; color: white; padding: 10px; text-align: left; }
-                td { padding: 8px; border: 1px solid #ddd; }
-                tr:nth-child(even) { background-color: #f8fafc; }
-                .statistics { margin: 20px 0; padding: 15px; background-color: #f0f8ff; border-left: 4px solid #2d4a8a; }
-                .footer { margin-top: 30px; text-align: center; color: #666; font-size: 12px; border-top: 1px solid #ddd; padding-top: 10px; }
-                .status-active { color: #28a745; font-weight: bold; }
-                .status-inactive { color: #dc3545; font-weight: bold; }
-                .logo { text-align: center; margin-bottom: 20px; }
-                .logo-text { font-size: 24px; font-weight: bold; color: #0f1a3a; }
-                .logo-subtext { color: #d4af37; font-size: 14px; }
-            </style>
-        </head>
-        <body>
-            <div class="logo">
-                <div class="logo-text">TONTI<span style="color: #d4af37;">NE</span>PRO</div>
-                <div class="logo-subtext">Système de Gestion de Tontine</div>
-            </div>
-            
-            <h1>LISTE DES MEMBRES</h1>
-            <div class="header-info">
-                Date d\'export: ' . date('d/m/Y à H:i') . '<br>
-                Généré par: ' . ($_SESSION['nom'] ?? 'Administrateur') . '
-            </div>';
-        
-        // Statistiques
-        $total = count($membres_pdf);
-        $actifs = array_filter($membres_pdf, function($m) { 
-            return isset($m['statut']) && $m['statut'] === 'actif'; 
-        });
-        $inactifs = $total - count($actifs);
-        
-        $html .= '
-            <div class="statistics">
-                <strong>Statistiques:</strong><br>
-                Total membres: ' . $total . ' | 
-                Actifs: <span style="color: #28a745;">' . count($actifs) . '</span> | 
-                Inactifs: <span style="color: #dc3545;">' . $inactifs . '</span>
-            </div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th width="5%">N°</th>
-                        <th width="25%">Nom & Prénom</th>
-                        <th width="15%">Téléphone</th>
-                        <th width="25%">Adresse</th>
-                        <th width="15%">Date d\'inscription</th>
-                        <th width="15%">Statut</th>
-                    </tr>
-                </thead>
-                <tbody>';
-        
+        $membres_pdf = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $total    = count($membres_pdf);
+        $actifs   = count(array_filter($membres_pdf, fn($m) => ($m['statut'] ?? '') === 'actif'));
+        $inactifs = $total - $actifs;
+
+        $pdf->SetFillColor(240, 248, 255); // très clair bleu
+        $pdf->SetTextColor(45, 74, 138);
+        $pdf->SetFont('helvetica', 'B', 11);
+        $pdf->Cell(0, 10, "Statistiques", 0, 1, 'L', true);
+
+        $pdf->SetFont('helvetica', '', 10);
+        $pdf->SetTextColor(0);
+        $pdf->Cell(0, 8, "Total membres : $total", 0, 1);
+        $pdf->SetTextColor(40, 167, 69);
+        $pdf->Cell(0, 8, "Membres actifs : $actifs", 0, 1);
+        $pdf->SetTextColor(220, 53, 69);
+        $pdf->Cell(0, 8, "Membres inactifs : $inactifs", 0, 1);
+
+        $pdf->Ln(12);
+
+        // =====================================
+        //              TABLEAU
+        // =====================================
+        $header = ['N°', 'Nom & Prénom', 'Téléphone', 'Adresse', 'Inscription', 'Statut'];
+        $w = [12, 50, 35, 55, 28, 25]; // largeurs des colonnes
+
+        // En-tête tableau
+        $pdf->SetFillColor(15, 26, 58);
+        $pdf->SetTextColor(255);
+        $pdf->SetFont('helvetica', 'B', 10);
+
+        for ($i = 0; $i < count($header); $i++) {
+            $pdf->Cell($w[$i], 10, $header[$i], 1, 0, 'C', true);
+        }
+        $pdf->Ln();
+
+        // Lignes de données
+        $pdf->SetFont('helvetica', '', 9);
+        $pdf->SetTextColor(0);
+        $fill = false;
+
         $counter = 1;
-        foreach($membres_pdf as $membre) {
-            $adresse = isset($membre['adresse']) ? $membre['adresse'] : '';
-            if (strlen($adresse) > 40) {
-                $adresse = substr($adresse, 0, 37) . '...';
+        foreach ($membres_pdf as $m) {
+            $nom_complet = $m['nom'] . ' ' . $m['prenom'];
+            $adresse = $m['adresse'] ?? '';
+            if (mb_strlen($adresse) > 45) {
+                $adresse = mb_substr($adresse, 0, 42) . '...';
             }
-            
-            $statut_class = ($membre['statut'] === 'actif') ? 'status-active' : 'status-inactive';
-            $statut_text = strtoupper($membre['statut']);
-            
-            $html .= '
-                    <tr>
-                        <td>' . $counter . '</td>
-                        <td><strong>' . htmlspecialchars($membre['nom'] . ' ' . $membre['prenom']) . '</strong></td>
-                        <td>' . htmlspecialchars($membre['telephone']) . '</td>
-                        <td>' . htmlspecialchars($adresse) . '</td>
-                        <td>' . date('d/m/Y', strtotime($membre['date_inscription'])) . '</td>
-                        <td class="' . $statut_class . '">' . $statut_text . '</td>
-                    </tr>';
-            $counter++;
+
+            $statut = strtoupper($m['statut'] ?? 'inconnu');
+            $statut_color = ($m['statut'] === 'actif') ? [40,167,69] : [220,53,69];
+
+            $pdf->SetTextColor(0);
+            $pdf->Cell($w[0], 9, $counter, 1, 0, 'C', $fill);
+            $pdf->Cell($w[1], 9, $nom_complet, 1, 0, 'L', $fill);
+            $pdf->Cell($w[2], 9, $m['telephone'] ?? '', 1, 0, 'L', $fill);
+            $pdf->Cell($w[3], 9, $adresse, 1, 0, 'L', $fill);
+            $pdf->Cell($w[4], 9, date('d/m/Y', strtotime($m['date_inscription'])), 1, 0, 'C', $fill);
+
+            // Statut avec couleur
+            $pdf->SetTextColor(...$statut_color);
+            $pdf->Cell($w[5], 9, $statut, 1, 0, 'C', $fill);
+            $pdf->SetTextColor(0);
+
+            $pdf->Ln();
+            $fill = !$fill;
         }
-        
-        $html .= '
-                </tbody>
-            </table>
-            
-            <div class="footer">
-                Document généré automatiquement le ' . date('d/m/Y à H:i:s') . '<br>
-                © ' . date('Y') . ' TontinePro - Tous droits réservés
-            </div>
-        </body>
-        </html>';
-        
-        // Convertir en PDF (solution simple)
-        // Nous allons créer un PDF simple ou rediriger vers une page d'impression
-        // Pour une vraie conversion PDF, vous devrez installer une librairie comme DOMPDF
-        
-        // Option 1: Créer un fichier HTML pour impression
-        $filename = 'membres_tontine_' . date('Ymd_His') . '.html';
-        
-        // Nettoyer le buffer
-        while (ob_get_level()) {
-            ob_end_clean();
-        }
-        
-        // Entêtes pour forcer le téléchargement
-        header('Content-Type: text/html');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Cache-Control: private, max-age=0, must-revalidate');
-        header('Pragma: public');
-        
-        echo $html;
+
+        // =====================================
+        //             PIED DE PAGE
+        // =====================================
+        $pdf->SetY(-25);
+        $pdf->SetFont('helvetica', 'I', 8);
+        $pdf->SetTextColor(120);
+        $pdf->Cell(0, 10, 'Document généré le ' . date('d/m/Y H:i:s') . '  © ' . date('Y') . ' TontinePro', 0, 0, 'C');
+
+        // Sortie du PDF
+        $filename = 'membres_tontine_' . date('Ymd_His') . '.pdf';
+
+        ob_end_clean(); // Très important !
+        $pdf->Output($filename, 'D'); // 'D' = download
+
         exit();
-        
+
     } catch (Exception $e) {
-        // Si une exception est levée, nettoyer le buffer et rediriger
-        while (ob_get_level()) {
-            ob_end_clean();
-        }
-        
-        $_SESSION['flash_message'] = "Erreur lors de la génération du document: " . $e->getMessage();
+        $_SESSION['flash_message'] = "Erreur lors de la génération du PDF : " . $e->getMessage();
         $_SESSION['flash_type'] = "error";
         header("Location: " . $_SERVER['PHP_SELF']);
         exit();
@@ -1096,7 +1093,7 @@ try {
 
         <!-- Quick Actions -->
         <div class="quick-actions">
-            <form method="POST" action="" class="export-form" id="exportPdfForm">
+            <form method="POST" action="" class="export-form" id="exportPdfForm" style="display: none;">
                 <button type="submit" name="export_pdf" class="action-btn export-pdf" id="exportPdfBtn">
                     <i class="fas fa-file-pdf"></i> Exporter en HTML (PDF)
                 </button>
