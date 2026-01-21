@@ -36,6 +36,13 @@ $_SESSION['last_activity'] = time();
 // Déterminer le rôle
 $is_admin = ($user['role'] === 'admin');
 
+// Initialiser les variables
+$stats = [];
+$activites = [];
+$membres_recents = [];
+$mes_tontines = [];
+$erreur = null;
+
 // Récupérer les statistiques selon le rôle
 try {
     if ($is_admin) {
@@ -43,11 +50,11 @@ try {
             'total_membres' => $pdo->query("SELECT COUNT(*) FROM membre")->fetchColumn(),
             'membres_actifs' => $pdo->query("SELECT COUNT(*) FROM membre WHERE statut = 'actif'")->fetchColumn(),
             'total_tontines' => $pdo->query("SELECT COUNT(*) FROM tontine")->fetchColumn(),
-            'total_cotisations' => $pdo->query("SELECT SUM(montant_cotisation) FROM tontine WHERE statut = 'en cours'")->fetchColumn() ?? 0,
+            'total_cotisations' => $pdo->query("SELECT COALESCE(SUM(montant_cotisation), 0) FROM tontine WHERE statut = 'active'")->fetchColumn(),
             'total_seances' => $pdo->query("SELECT COUNT(*) FROM seance")->fetchColumn(),
-            'montant_total_seances' => $pdo->query("SELECT SUM(montant_total) FROM seance")->fetchColumn() ?? 0,
+            'montant_total_seances' => $pdo->query("SELECT COALESCE(SUM(c.montant), 0) FROM seance s LEFT JOIN cotisation c ON s.id_seance = c.id_seance")->fetchColumn(),
             'total_credits' => $pdo->query("SELECT COUNT(*) FROM credit")->fetchColumn(),
-            'montant_total_credits' => $pdo->query("SELECT SUM(montant) FROM credit")->fetchColumn() ?? 0,
+            'montant_total_credits' => $pdo->query("SELECT COALESCE(SUM(montant), 0) FROM credit")->fetchColumn(),
         ];
 
         $query = "
@@ -117,6 +124,30 @@ try {
     }
 } catch (PDOException $e) {
     $erreur = "Erreur lors de la récupération des données: " . $e->getMessage();
+    // Initialiser avec des valeurs par défaut pour éviter les erreurs
+    if ($is_admin) {
+        $stats = [
+            'total_membres' => 0,
+            'membres_actifs' => 0,
+            'total_tontines' => 0,
+            'total_cotisations' => 0,
+            'total_seances' => 0,
+            'montant_total_seances' => 0,
+            'total_credits' => 0,
+            'montant_total_credits' => 0,
+        ];
+    } else {
+        $stats = [
+            'mes_tontines' => 0,
+            'mes_cotisations' => 0,
+            'montant_total_cotise' => 0,
+            'mes_credits' => 0,
+            'montant_credit_total' => 0,
+        ];
+    }
+    $activites = [];
+    $membres_recents = [];
+    $mes_tontines = [];
 }
 
 // Vérifier si on est sur mobile
@@ -1320,14 +1351,14 @@ $is_mobile = isMobile();
                                 <i class="fas fa-users"></i>
                             </div>
                             <span class="stat-badge" style="background: #d1fae5; color: #065f46;">
-                                +<?php echo $stats['membres_actifs']; ?> actifs
+                                +<?php echo isset($stats['membres_actifs']) ? $stats['membres_actifs'] : 0; ?> actifs
                             </span>
                         </div>
-                        <div class="stat-value"><?php echo $stats['total_membres']; ?></div>
+                        <div class="stat-value"><?php echo isset($stats['total_membres']) ? $stats['total_membres'] : 0; ?></div>
                         <div class="stat-label">Total Membres</div>
                         <div class="stat-footer" style="color: #10b981;">
                             <i class="fas fa-arrow-up"></i>
-                            <strong><?php echo $stats['total_membres'] > 0 ? round(($stats['membres_actifs'] / $stats['total_membres']) * 100) : 0; ?>%</strong>
+                            <strong><?php echo (isset($stats['total_membres']) && $stats['total_membres'] > 0) ? round(($stats['membres_actifs'] / $stats['total_membres']) * 100) : 0; ?>%</strong>
                             <span>de taux d'activité</span>
                         </div>
                     </div>
@@ -1341,11 +1372,11 @@ $is_mobile = isMobile();
                                 Actives
                             </span>
                         </div>
-                        <div class="stat-value"><?php echo $stats['total_tontines']; ?></div>
+                        <div class="stat-value"><?php echo isset($stats['total_tontines']) ? $stats['total_tontines'] : 0; ?></div>
                         <div class="stat-label">Tontines</div>
                         <div class="stat-footer" style="color: #3b82f6;">
                             <i class="fas fa-coins"></i>
-                            <strong><?php echo number_format($stats['total_cotisations'], 0, ',', ' '); ?> FCFA</strong>
+                            <strong><?php echo isset($stats['total_cotisations']) ? number_format($stats['total_cotisations'], 0, ',', ' ') : 0; ?> FCFA</strong>
                         </div>
                     </div>
 
@@ -1358,11 +1389,11 @@ $is_mobile = isMobile();
                                 Réalisées
                             </span>
                         </div>
-                        <div class="stat-value"><?php echo $stats['total_seances']; ?></div>
+                        <div class="stat-value"><?php echo isset($stats['total_seances']) ? $stats['total_seances'] : 0; ?></div>
                         <div class="stat-label">Séances</div>
                         <div class="stat-footer" style="color: #a855f7;">
                             <i class="fas fa-chart-line"></i>
-                            <strong><?php echo number_format($stats['montant_total_seances'], 0, ',', ' '); ?> FCFA</strong>
+                            <strong><?php echo isset($stats['montant_total_seances']) ? number_format($stats['montant_total_seances'], 0, ',', ' ') : 0; ?> FCFA</strong>
                         </div>
                     </div>
 
@@ -1375,11 +1406,11 @@ $is_mobile = isMobile();
                                 En cours
                             </span>
                         </div>
-                        <div class="stat-value"><?php echo $stats['total_credits']; ?></div>
+                        <div class="stat-value"><?php echo isset($stats['total_credits']) ? $stats['total_credits'] : 0; ?></div>
                         <div class="stat-label">Crédits</div>
                         <div class="stat-footer" style="color: #f59e0b;">
                             <i class="fas fa-percentage"></i>
-                            <strong><?php echo number_format($stats['montant_total_credits'], 0, ',', ' '); ?> FCFA</strong>
+                            <strong><?php echo isset($stats['montant_total_credits']) ? number_format($stats['montant_total_credits'], 0, ',', ' ') : 0; ?> FCFA</strong>
                         </div>
                     </div>
                 <?php else: ?>
@@ -1392,7 +1423,7 @@ $is_mobile = isMobile();
                                 Participations
                             </span>
                         </div>
-                        <div class="stat-value"><?php echo $stats['mes_tontines']; ?></div>
+                        <div class="stat-value"><?php echo isset($stats['mes_tontines']) ? $stats['mes_tontines'] : 0; ?></div>
                         <div class="stat-label">Mes Tontines</div>
                         <div class="stat-footer" style="color: #3b82f6;">
                             <i class="fas fa-check-circle"></i>
@@ -1409,11 +1440,11 @@ $is_mobile = isMobile();
                                 Paiements
                             </span>
                         </div>
-                        <div class="stat-value"><?php echo $stats['mes_cotisations']; ?></div>
+                        <div class="stat-value"><?php echo isset($stats['mes_cotisations']) ? $stats['mes_cotisations'] : 0; ?></div>
                         <div class="stat-label">Cotisations</div>
                         <div class="stat-footer" style="color: #10b981;">
                             <i class="fas fa-coins"></i>
-                            <strong><?php echo number_format($stats['montant_total_cotise'], 0, ',', ' '); ?> FCFA</strong>
+                            <strong><?php echo isset($stats['montant_total_cotise']) ? number_format($stats['montant_total_cotise'], 0, ',', ' ') : 0; ?> FCFA</strong>
                         </div>
                     </div>
 
@@ -1426,11 +1457,11 @@ $is_mobile = isMobile();
                                 Emprunts
                             </span>
                         </div>
-                        <div class="stat-value"><?php echo $stats['mes_credits']; ?></div>
+                        <div class="stat-value"><?php echo isset($stats['mes_credits']) ? $stats['mes_credits'] : 0; ?></div>
                         <div class="stat-label">Mes Crédits</div>
                         <div class="stat-footer" style="color: #f59e0b;">
                             <i class="fas fa-percentage"></i>
-                            <strong><?php echo number_format($stats['montant_credit_total'], 0, ',', ' '); ?> FCFA</strong>
+                            <strong><?php echo isset($stats['montant_credit_total']) ? number_format($stats['montant_credit_total'], 0, ',', ' ') : 0; ?> FCFA</strong>
                         </div>
                     </div>
 
@@ -1445,9 +1476,13 @@ $is_mobile = isMobile();
                         </div>
                         <div class="stat-value">
                             <?php
-                            $stmt_gains = $pdo->prepare("SELECT COUNT(*) FROM beneficiaire WHERE id_membre = ?");
-                            $stmt_gains->execute([$user_id]);
-                            echo $stmt_gains->fetchColumn();
+                            if (isset($pdo)) {
+                                $stmt_gains = $pdo->prepare("SELECT COUNT(*) FROM beneficiaire WHERE id_membre = ?");
+                                $stmt_gains->execute([$user_id]);
+                                echo $stmt_gains->fetchColumn();
+                            } else {
+                                echo "0";
+                            }
                             ?>
                         </div>
                         <div class="stat-label">Gains Tontines</div>
