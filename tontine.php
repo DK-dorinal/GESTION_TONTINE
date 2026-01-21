@@ -1208,7 +1208,7 @@ try {
 
         <!-- Quick Actions -->
         <div class="quick-actions">
-            <form method="POST" action="" class="export-form" id="exportPdfForm">
+            <form method="POST" action="" class="export-form" id="exportPdfForm" style="display: none;">
                 <button type="submit" name="export_pdf" class="action-btn export-pdf" id="exportPdfBtn">
                     <i class="fas fa-file-pdf"></i> Exporter en PDF
                 </button>

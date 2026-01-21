@@ -42,134 +42,137 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['export_pdf'])) {
             exit();
         }
 
-        // Chargement de TCPDF
-        require_once './lib/tcpdf/tcpdf.php';   // ← ADAPTE LE CHEMIN ICI !
-
-        // Création du document PDF
+        // Inclusion de TCPDF
+        require_once('tcpdf/tcpdf.php');
+        
+        // Création d'une nouvelle instance de TCPDF
         $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
-
-        // Désactiver les en-têtes et pieds de page par défaut
+        
+        // Définir les informations du document
+        $pdf->SetCreator('Système de Gestion de Tontine');
+        $pdf->SetAuthor('Administrateur Tontine');
+        $pdf->SetTitle('Liste des Membres');
+        
+        // Supprimer l'en-tête et le pied de page par défaut
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
-
-        // Ajout d'une page
+        
+        // Définir les marges
+        $pdf->SetMargins(10, 10, 10);
+        
+        // Ajouter une page
         $pdf->AddPage();
-
-        // Police par défaut + taille
-        $pdf->SetFont('helvetica', '', 10);
-
-        // =====================================
-        //          EN-TÊTE DU DOCUMENT
-        // =====================================
-        $pdf->SetY(15);
-        $pdf->SetFont('helvetica', 'B', 22);
-        $pdf->SetTextColor(15, 26, 58); // navy-blue
-        $pdf->Cell(0, 10, 'TONTINEPRO', 0, 1, 'C');
-
-        $pdf->SetFont('helvetica', '', 11);
-        $pdf->SetTextColor(212, 175, 55); // gold
-        $pdf->Cell(0, 8, 'Système de Gestion de Tontine', 0, 1, 'C');
-
-        $pdf->Ln(8);
-
-        $pdf->SetFont('helvetica', 'B', 16);
-        $pdf->SetTextColor(45, 74, 138);
-        $pdf->Cell(0, 10, 'LISTE DES MEMBRES', 0, 1, 'C');
-
-        $pdf->SetFont('helvetica', '', 10);
-        $pdf->SetTextColor(100);
-        $pdf->Cell(0, 6, 'Date d\'export : ' . date('d/m/Y à H:i'), 0, 1, 'C');
-        $pdf->Cell(0, 6, 'Généré par : ' . ($_SESSION['nom'] ?? 'Administrateur'), 0, 1, 'C');
-
-        $pdf->Ln(10);
-
-        // =====================================
-        //          STATISTIQUES
-        // =====================================
+        
+        // Style CSS pour le PDF
+        $style = "
+            <style>
+                h1 { color: #0f1a3a; text-align: center; font-size: 20px; }
+                h2 { color: #2d4a8a; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+                .header { text-align: center; margin-bottom: 20px; }
+                .subtitle { color: #666; text-align: center; font-size: 12px; }
+                .stats { background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
+                .stat-item { display: inline-block; margin-right: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th { background-color: #2d4a8a; color: white; padding: 8px; text-align: left; font-size: 11px; }
+                td { padding: 8px; border-bottom: 1px solid #ddd; font-size: 10px; }
+                .active { color: #28a745; font-weight: bold; }
+                .inactive { color: #dc3545; font-weight: bold; }
+                .footer { text-align: center; margin-top: 30px; color: #666; font-size: 10px; }
+            </style>
+        ";
+        
+        // Récupération des données des membres
         $stmt = $pdo->query("SELECT * FROM membre ORDER BY nom, prenom");
         $membres_pdf = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $total    = count($membres_pdf);
-        $actifs   = count(array_filter($membres_pdf, fn($m) => ($m['statut'] ?? '') === 'actif'));
-        $inactifs = $total - $actifs;
-
-        $pdf->SetFillColor(240, 248, 255); // très clair bleu
-        $pdf->SetTextColor(45, 74, 138);
-        $pdf->SetFont('helvetica', 'B', 11);
-        $pdf->Cell(0, 10, "Statistiques", 0, 1, 'L', true);
-
-        $pdf->SetFont('helvetica', '', 10);
-        $pdf->SetTextColor(0);
-        $pdf->Cell(0, 8, "Total membres : $total", 0, 1);
-        $pdf->SetTextColor(40, 167, 69);
-        $pdf->Cell(0, 8, "Membres actifs : $actifs", 0, 1);
-        $pdf->SetTextColor(220, 53, 69);
-        $pdf->Cell(0, 8, "Membres inactifs : $inactifs", 0, 1);
-
-        $pdf->Ln(12);
-
-        // =====================================
-        //              TABLEAU
-        // =====================================
-        $header = ['N°', 'Nom & Prénom', 'Téléphone', 'Adresse', 'Inscription', 'Statut'];
-        $w = [12, 50, 35, 55, 28, 25]; // largeurs des colonnes
-
-        // En-tête tableau
-        $pdf->SetFillColor(15, 26, 58);
-        $pdf->SetTextColor(255);
-        $pdf->SetFont('helvetica', 'B', 10);
-
-        for ($i = 0; $i < count($header); $i++) {
-            $pdf->Cell($w[$i], 10, $header[$i], 1, 0, 'C', true);
+        
+        // Calcul des statistiques
+        $total = count($membres_pdf);
+        $actifs = 0;
+        $inactifs = 0;
+        foreach ($membres_pdf as $m) {
+            if (($m['statut'] ?? '') === 'actif') {
+                $actifs++;
+            } else {
+                $inactifs++;
+            }
         }
-        $pdf->Ln();
-
-        // Lignes de données
-        $pdf->SetFont('helvetica', '', 9);
-        $pdf->SetTextColor(0);
-        $fill = false;
-
+        $taux_activite = $total > 0 ? round(($actifs / $total) * 100, 1) : 0;
+        
+        // Contenu HTML du PDF
+        $html = $style . '
+        <div class="header">
+            <h1>TONTINEPRO - Liste des Membres</h1>
+            <div class="subtitle">
+                Système de Gestion de Tontine<br>
+                Date d\'export : ' . date('d/m/Y à H:i') . '<br>
+                Généré par : ' . ($_SESSION['nom'] ?? 'Administrateur') . '
+            </div>
+        </div>
+        
+        <div class="stats">
+            <h2>Statistiques</h2>
+            <div class="stat-item"><strong>Total Membres:</strong> ' . $total . '</div>
+            <div class="stat-item"><strong>Actifs:</strong> ' . $actifs . ' (' . $taux_activite . '%)</div>
+            <div class="stat-item"><strong>Inactifs:</strong> ' . $inactifs . '</div>
+        </div>
+        
+        <h2>Liste détaillée des membres</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th width="5%">N°</th>
+                    <th width="25%">Nom & Prénom</th>
+                    <th width="15%">Téléphone</th>
+                    <th width="30%">Adresse</th>
+                    <th width="15%">Inscription</th>
+                    <th width="10%">Statut</th>
+                </tr>
+            </thead>
+            <tbody>';
+        
         $counter = 1;
         foreach ($membres_pdf as $m) {
-            $nom_complet = $m['nom'] . ' ' . $m['prenom'];
-            $adresse = $m['adresse'] ?? '';
-            if (mb_strlen($adresse) > 45) {
-                $adresse = mb_substr($adresse, 0, 42) . '...';
-            }
-
+            $nom_complet = htmlspecialchars($m['nom'] . ' ' . $m['prenom']);
+            $telephone = htmlspecialchars($m['telephone'] ?? '');
+            $adresse = htmlspecialchars($m['adresse'] ?? '');
+            $date_inscription = date('d/m/Y', strtotime($m['date_inscription']));
             $statut = strtoupper($m['statut'] ?? 'inconnu');
-            $statut_color = ($m['statut'] === 'actif') ? [40,167,69] : [220,53,69];
-
-            $pdf->SetTextColor(0);
-            $pdf->Cell($w[0], 9, $counter, 1, 0, 'C', $fill);
-            $pdf->Cell($w[1], 9, $nom_complet, 1, 0, 'L', $fill);
-            $pdf->Cell($w[2], 9, $m['telephone'] ?? '', 1, 0, 'L', $fill);
-            $pdf->Cell($w[3], 9, $adresse, 1, 0, 'L', $fill);
-            $pdf->Cell($w[4], 9, date('d/m/Y', strtotime($m['date_inscription'])), 1, 0, 'C', $fill);
-
-            // Statut avec couleur
-            $pdf->SetTextColor(...$statut_color);
-            $pdf->Cell($w[5], 9, $statut, 1, 0, 'C', $fill);
-            $pdf->SetTextColor(0);
-
-            $pdf->Ln();
-            $fill = !$fill;
+            $statut_class = ($m['statut'] === 'actif') ? 'active' : 'inactive';
+            
+            $html .= '
+                <tr>
+                    <td>' . $counter . '</td>
+                    <td>' . $nom_complet . '</td>
+                    <td>' . $telephone . '</td>
+                    <td>' . $adresse . '</td>
+                    <td>' . $date_inscription . '</td>
+                    <td class="' . $statut_class . '">' . $statut . '</td>
+                </tr>';
+            
+            $counter++;
         }
-
-        // =====================================
-        //             PIED DE PAGE
-        // =====================================
-        $pdf->SetY(-25);
-        $pdf->SetFont('helvetica', 'I', 8);
-        $pdf->SetTextColor(120);
-        $pdf->Cell(0, 10, 'Document généré le ' . date('d/m/Y H:i:s') . '  © ' . date('Y') . ' TontinePro', 0, 0, 'C');
-
+        
+        $html .= '
+            </tbody>
+        </table>
+        
+        <div class="footer">
+            Document généré le ' . date('d/m/Y H:i:s') . ' - © ' . date('Y') . ' TontinePro
+        </div>';
+        
+        // Écrire le contenu HTML dans le PDF
+        $pdf->writeHTML($html, true, false, true, false, '');
+        
         // Sortie du PDF
         $filename = 'membres_tontine_' . date('Ymd_His') . '.pdf';
-
-        ob_end_clean(); // Très important !
-        $pdf->Output($filename, 'D'); // 'D' = download
-
+        
+        // Nettoyage du buffer de sortie
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        // Téléchargement du PDF
+        $pdf->Output($filename, 'D');
         exit();
 
     } catch (Exception $e) {
@@ -179,11 +182,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['export_pdf'])) {
         exit();
     }
 }
-$total = count($membres);
-$actifs = array_filter($membres, fn($m) => $m['statut'] === 'actif');
-$inactifs = $total - count($actifs);
-
-$pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
 
 // --- TRAITEMENT DU FORMULAIRE D'AJOUT ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nom'])) {
@@ -266,6 +264,12 @@ try {
         $message_type = "error";
     }
 }
+
+// Calcul des statistiques pour l'affichage
+$total = count($membres);
+$actifs = array_filter($membres, fn($m) => isset($m['statut']) && $m['statut'] === 'actif');
+$inactifs = $total - count($actifs);
+$pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -730,6 +734,22 @@ try {
             scrollbar-width: 1px solid var(--accent-light);
         }
 
+        .members-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .members-table th {
+            background: linear-gradient(135deg, var(--medium-blue) 0%, var(--light-blue) 100%);
+            color: var(--pure-white);
+            padding: 18px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
         .members-table tbody tr:hover {
             background: linear-gradient(90deg, rgba(212, 175, 55, 0.08), transparent);
             transform: scale(1.01);
@@ -1093,9 +1113,9 @@ try {
 
         <!-- Quick Actions -->
         <div class="quick-actions">
-            <form method="POST" action="" class="export-form" id="exportPdfForm" style="display: none;">
+            <form method="POST" action="" class="export-form" style="display: none;">
                 <button type="submit" name="export_pdf" class="action-btn export-pdf" id="exportPdfBtn">
-                    <i class="fas fa-file-pdf"></i> Exporter en HTML (PDF)
+                    <i class="fas fa-file-pdf"></i> Exporter en PDF
                 </button>
             </form>
             
@@ -1310,9 +1330,7 @@ try {
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         $(document).ready(function() {
-            let pdfExportInProgress = false;
-            
-            $('#exportPdfForm').on('submit', function(e) {
+            $('form.export-form').on('submit', function(e) {
                 <?php if (count($membres) == 0): ?>
                     e.preventDefault();
                     Swal.fire({
@@ -1323,26 +1341,22 @@ try {
                     });
                     return false;
                 <?php else: ?>
-                    pdfExportInProgress = true;
+                    // Afficher l'indicateur de chargement
                     $('#loadingOverlay').fadeIn();
                     $('#exportPdfBtn').prop('disabled', true).css('opacity', '0.7');
                     
+                    // Désactiver l'indicateur après 30 secondes (en cas de problème)
                     setTimeout(function() {
-                        if (pdfExportInProgress) {
-                            $('#loadingOverlay').fadeOut();
-                            $('#exportPdfBtn').prop('disabled', false).css('opacity', '1');
-                            pdfExportInProgress = false;
-                        }
+                        $('#loadingOverlay').fadeOut();
+                        $('#exportPdfBtn').prop('disabled', false).css('opacity', '1');
                     }, 30000);
                 <?php endif; ?>
             });
-            
+
+            // Cacher l'indicateur quand la page se recharge
             $(window).on('pageshow load', function() {
-                if (pdfExportInProgress) {
-                    pdfExportInProgress = false;
-                    $('#loadingOverlay').fadeOut();
-                    $('#exportPdfBtn').prop('disabled', false).css('opacity', '1');
-                }
+                $('#loadingOverlay').fadeOut();
+                $('#exportPdfBtn').prop('disabled', false).css('opacity', '1');
             });
 
             $('#memberForm').on('submit', function(e) {
@@ -1460,24 +1474,3 @@ if (isset($pdo)) {
     $pdo = null;
 }
 ?>
-<script>
-const stats = {
-    total: <?= $total ?>,
-    actifs: <?= count($actifs) ?>,
-    inactifs: <?= $inactifs ?>,
-    pourcentageActifs: <?= $pourcentageActifs ?>
-};
-
-$('#showStatsBtn').on('click', function () {
-    Swal.fire({
-        title: '📊 Statistiques des Membres',
-        html: `
-            <p><b>Total :</b> ${stats.total}</p>
-            <p><b>Actifs :</b> ${stats.actifs}</p>
-            <p><b>Inactifs :</b> ${stats.inactifs}</p>
-            <p><b>Actifs (%) :</b> ${stats.pourcentageActifs}%</p>
-        `,
-        confirmButtonColor: '#2d4a8a'
-    });
-});
-</script>

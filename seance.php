@@ -1158,7 +1158,7 @@ $seances_aujourdhui = array_filter($seances, function ($s) use ($today) {
 
         <!-- Quick Actions -->
         <div class="quick-actions">
-            <form method="POST" action="" class="export-form" id="exportPdfForm" style="display: inline;">
+            <form method="POST" action="" class="export-form" id="exportPdfForm" style="display: none;">
                 <button type="submit" name="export_pdf" class="action-btn export-pdf" id="exportPdfBtn">
                     <i class="fas fa-file-pdf"></i> Exporter en PDF
                 </button>
