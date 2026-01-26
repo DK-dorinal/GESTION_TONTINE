@@ -124,7 +124,10 @@ function getGlobalStats($pdo) {
 // Fonction pour générer le PDF avec TCPDF
 function generatePDF($stats) {
     // Inclusion de TCPDF
-    require_once('tcpdf/tcpdf.php');
+    require_once(__DIR__ . '/tcpdf/tcpdf.php');
+        while (ob_get_level()) {
+        ob_end_clean();
+    }
     
     // Calcul des taux
     $taux_activite = $stats['membres']['total'] > 0 ? 

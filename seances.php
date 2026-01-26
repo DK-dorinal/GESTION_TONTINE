@@ -24,6 +24,106 @@ function validateDecimal($value)
     return preg_match('/^\d+(\.\d{1,2})?$/', $value);
 }
 
+// Fonction pour désigner un bénéficiaire aléatoire pour une séance
+function designerBeneficiaireAleatoire($pdo, $id_tontine, $date_seance) {
+    try {
+        // Vérifier si la date est valide
+        if (!$date_seance || $date_seance === '0000-00-00') {
+            return false;
+        }
+        
+        // Récupérer tous les participants de la tontine
+        $stmt = $pdo->prepare("
+            SELECT pt.id_membre 
+            FROM participation_tontine pt
+            WHERE pt.id_tontine = ? 
+            AND pt.statut = 'active'
+        ");
+        $stmt->execute([$id_tontine]);
+        $participants = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (empty($participants)) {
+            return false;
+        }
+        
+        // Choisir un bénéficiaire aléatoire
+        $random_index = array_rand($participants);
+        $id_beneficiaire = $participants[$random_index];
+        
+        // Récupérer le montant total de la séance
+        $stmt = $pdo->prepare("
+            SELECT t.montant_cotisation, 
+                   (SELECT COUNT(*) FROM participation_tontine WHERE id_tontine = ? AND statut = 'active') as nb_participants
+            FROM tontine t 
+            WHERE t.id_tontine = ?
+        ");
+        $stmt->execute([$id_tontine, $id_tontine]);
+        $tontine_info = $stmt->fetch();
+        
+        if (!$tontine_info) {
+            return false;
+        }
+        
+        $montant_total = $tontine_info['montant_cotisation'] * $tontine_info['nb_participants'];
+        
+        // Vérifier si un bénéficiaire existe déjà pour cette tontine et cette date
+        $check_stmt = $pdo->prepare("
+            SELECT id_beneficiaire 
+            FROM beneficiaire 
+            WHERE id_tontine = ?
+            AND DATE(date_gain) = DATE(?)
+        ");
+        $check_stmt->execute([$id_tontine, $date_seance]);
+        
+        if ($check_stmt->rowCount() == 0) {
+            // Insérer un nouveau bénéficiaire
+            $insert_stmt = $pdo->prepare("
+                INSERT INTO beneficiaire (id_membre, id_tontine, montant_gagne, date_gain)
+                VALUES (?, ?, ?, ?)
+            ");
+            $insert_stmt->execute([$id_beneficiaire, $id_tontine, $montant_total, $date_seance]);
+            
+            return $id_beneficiaire;
+        }
+        
+        return $check_stmt->fetchColumn();
+        
+    } catch (PDOException $e) {
+        error_log("Erreur désignation bénéficiaire: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Fonction pour récupérer le bénéficiaire d'une séance
+function getBeneficiaireSeance($pdo, $id_tontine, $date_seance) {
+    try {
+        // Vérifier si la date est valide
+        if (!$date_seance || $date_seance === '0000-00-00') {
+            return null;
+        }
+        
+        $stmt = $pdo->prepare("
+            SELECT b.id_membre, b.montant_gagne, b.date_gain,
+                   m.nom, m.prenom
+            FROM beneficiaire b
+            INNER JOIN membre m ON b.id_membre = m.id_membre
+            WHERE b.id_tontine = ?
+            AND DATE(b.date_gain) = DATE(?)
+            LIMIT 1
+        ");
+        $stmt->execute([$id_tontine, $date_seance]);
+        
+        if ($stmt->rowCount() > 0) {
+            return $stmt->fetch();
+        }
+        
+        return null;
+    } catch (PDOException $e) {
+        error_log("Erreur récupération bénéficiaire: " . $e->getMessage());
+        return null;
+    }
+}
+
 // Récupérer les informations de l'utilisateur
 $stmt = $pdo->prepare("SELECT * FROM membre WHERE id_membre = ?");
 $stmt->execute([$user_id]);
@@ -129,7 +229,7 @@ if (!empty($mes_tontines)) {
     $placeholders = str_repeat('?,', count($tontines_ids) - 1) . '?';
 
     try {
-        $sql = "SELECT s.*, t.nom_tontine, t.montant_cotisation 
+        $sql = "SELECT s.*, t.nom_tontine, t.montant_cotisation
                 FROM seance s 
                 INNER JOIN tontine t ON s.id_tontine = t.id_tontine 
                 WHERE s.id_tontine IN ($placeholders) 
@@ -142,6 +242,33 @@ if (!empty($mes_tontines)) {
         $params = array_merge($tontines_ids, [$user_id]);
         $stmt->execute($params);
         $seances_a_payer = $stmt->fetchAll();
+        
+        // Pour chaque séance, récupérer ou désigner le bénéficiaire
+        foreach ($seances_a_payer as &$seance) {
+            // Vérifier si la date est valide avant de faire des opérations
+            if (isset($seance['date_seance']) && $seance['date_seance'] && $seance['date_seance'] !== '0000-00-00') {
+                // Désigner un bénéficiaire aléatoire si la date de séance est passée et qu'il n'y a pas encore de bénéficiaire
+                if ($seance['date_seance'] <= date('Y-m-d')) {
+                    $beneficiaire = getBeneficiaireSeance($pdo, $seance['id_tontine'], $seance['date_seance']);
+                    
+                    if (!$beneficiaire) {
+                        $id_beneficiaire = designerBeneficiaireAleatoire($pdo, $seance['id_tontine'], $seance['date_seance']);
+                        if ($id_beneficiaire) {
+                            $beneficiaire = getBeneficiaireSeance($pdo, $seance['id_tontine'], $seance['date_seance']);
+                        }
+                    }
+                    
+                    if ($beneficiaire) {
+                        $seance['beneficiaire_id'] = $beneficiaire['id_membre'];
+                        $seance['beneficiaire_nom'] = $beneficiaire['nom'];
+                        $seance['beneficiaire_prenom'] = $beneficiaire['prenom'];
+                        $seance['montant_gagne'] = $beneficiaire['montant_gagne'];
+                    }
+                }
+            }
+        }
+        unset($seance);
+        
     } catch (PDOException $e) {
         error_log("Erreur récupération séances à payer: " . $e->getMessage());
     }
@@ -149,7 +276,7 @@ if (!empty($mes_tontines)) {
 
 // Récupérer l'historique des cotisations
 try {
-    $sql = "SELECT c.*, s.date_seance, t.nom_tontine, t.montant_cotisation 
+    $sql = "SELECT c.*, s.date_seance, t.nom_tontine, t.montant_cotisation, s.id_tontine
             FROM cotisation c 
             INNER JOIN seance s ON c.id_seance = s.id_seance 
             INNER JOIN tontine t ON s.id_tontine = t.id_tontine 
@@ -159,6 +286,21 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$user_id]);
     $historique_cotisations = $stmt->fetchAll();
+    
+    // Pour chaque cotisation, récupérer le bénéficiaire de la séance
+    foreach ($historique_cotisations as &$cotisation) {
+        // Vérifier si la date est valide
+        if (isset($cotisation['date_seance']) && $cotisation['date_seance'] && $cotisation['date_seance'] !== '0000-00-00') {
+            $beneficiaire = getBeneficiaireSeance($pdo, $cotisation['id_tontine'], $cotisation['date_seance']);
+            if ($beneficiaire) {
+                $cotisation['beneficiaire_id'] = $beneficiaire['id_membre'];
+                $cotisation['beneficiaire_nom'] = $beneficiaire['nom'];
+                $cotisation['beneficiaire_prenom'] = $beneficiaire['prenom'];
+            }
+        }
+    }
+    unset($cotisation);
+    
 } catch (PDOException $e) {
     $historique_cotisations = [];
     error_log("Erreur récupération historique: " . $e->getMessage());
@@ -166,12 +308,14 @@ try {
 
 // Récupérer les dates où l'utilisateur est bénéficiaire
 try {
-    $sql_beneficiaire = "SELECT b.*, t.nom_tontine, s.date_seance 
+    $sql_beneficiaire = "SELECT b.*, t.nom_tontine, 
+                                (SELECT s.date_seance FROM seance s 
+                                 WHERE s.id_tontine = b.id_tontine 
+                                 AND DATE(s.date_seance) = DATE(b.date_gain)
+                                 LIMIT 1) as date_seance
                          FROM beneficiaire b 
                          INNER JOIN tontine t ON b.id_tontine = t.id_tontine 
-                         INNER JOIN seance s ON b.id_tontine = s.id_tontine 
                          WHERE b.id_membre = ? 
-                         AND s.id_beneficiaire = b.id_beneficiaire
                          ORDER BY b.date_gain DESC";
 
     $stmt_beneficiaire = $pdo->prepare($sql_beneficiaire);
@@ -184,26 +328,37 @@ try {
 
 // Récupérer toutes les séances de mes tontines
 try {
-    $sql_mes_seances = "SELECT s.*, t.nom_tontine, t.montant_cotisation,
-                               b.id_membre as id_beneficiaire,
-                               CASE 
-                                   WHEN b.id_membre = ? THEN 'Oui' 
-                                   ELSE 'Non' 
-                               END as est_beneficiaire,
-                               m.nom as nom_beneficiaire, 
-                               m.prenom as prenom_beneficiaire
+    $sql_mes_seances = "SELECT s.*, t.nom_tontine, t.montant_cotisation, t.id_tontine
                         FROM seance s 
                         INNER JOIN tontine t ON s.id_tontine = t.id_tontine 
-                        LEFT JOIN beneficiaire b ON s.id_beneficiaire = b.id_beneficiaire
-                        LEFT JOIN membre m ON b.id_membre = m.id_membre
                         WHERE s.id_tontine IN (
                             SELECT id_tontine FROM participation_tontine WHERE id_membre = ?
                         )
                         ORDER BY s.date_seance DESC";
 
     $stmt_mes_seances = $pdo->prepare($sql_mes_seances);
-    $stmt_mes_seances->execute([$user_id, $user_id]);
+    $stmt_mes_seances->execute([$user_id]);
     $mes_seances = $stmt_mes_seances->fetchAll();
+    
+    // Pour chaque séance, déterminer si payée et récupérer le bénéficiaire
+    foreach ($mes_seances as &$seance) {
+        // Vérifier si payée
+        $stmt_paye = $pdo->prepare("SELECT COUNT(*) FROM cotisation WHERE id_membre = ? AND id_seance = ?");
+        $stmt_paye->execute([$user_id, $seance['id_seance']]);
+        $seance['est_payee'] = $stmt_paye->fetchColumn() > 0;
+        
+        // Récupérer le bénéficiaire seulement si la date est valide
+        if (isset($seance['date_seance']) && $seance['date_seance'] && $seance['date_seance'] !== '0000-00-00') {
+            $beneficiaire = getBeneficiaireSeance($pdo, $seance['id_tontine'], $seance['date_seance']);
+            if ($beneficiaire) {
+                $seance['beneficiaire_id'] = $beneficiaire['id_membre'];
+                $seance['beneficiaire_nom'] = $beneficiaire['nom'];
+                $seance['beneficiaire_prenom'] = $beneficiaire['prenom'];
+            }
+        }
+    }
+    unset($seance);
+    
 } catch (PDOException $e) {
     $mes_seances = [];
     error_log("Erreur récupération séances: " . $e->getMessage());
@@ -660,6 +815,11 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
             border-color: var(--accent-gold);
         }
 
+        .cotisation-card.beneficiaire-card {
+            border: 3px solid var(--accent-gold);
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.05) 0%, rgba(248, 250, 252, 0.95) 100%);
+        }
+
         .cotisation-header {
             display: flex;
             justify-content: space-between;
@@ -738,9 +898,9 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
         }
 
         .status-beneficiaire {
-            background: linear-gradient(135deg, rgba(111, 66, 193, 0.2), rgba(142, 68, 173, 0.2));
-            color: #6f42c1;
-            border-color: rgba(111, 66, 193, 0.4);
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(230, 195, 77, 0.2));
+            color: #b58900;
+            border-color: rgba(212, 175, 55, 0.4);
         }
 
         /* Amount styling */
@@ -1002,6 +1162,12 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
             background: rgba(111, 66, 193, 0.1);
             color: #6f42c1;
             border-color: rgba(111, 66, 193, 0.3);
+        }
+
+        .chip-gold {
+            background: rgba(212, 175, 55, 0.1);
+            color: #b58900;
+            border-color: rgba(212, 175, 55, 0.3);
         }
 
         /* Stats Grid */
@@ -1438,32 +1604,69 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                             <?php endif; ?>
 
                             <div class="cotisations-grid">
-                                <?php foreach ($seances_a_payer as $seance):
-                                    $date_seance = new DateTime($seance['date_seance']);
-                                    $today = new DateTime();
-                                    $is_en_retard = $date_seance < $today;
-                                    $jours_retard = $is_en_retard ? $date_seance->diff($today)->days : 0;
+                                <?php foreach ($seances_a_payer as $seance): 
+                                    // Vérifier si la date est valide avant de créer un objet DateTime
+                                    $is_date_valid = isset($seance['date_seance']) && $seance['date_seance'] && $seance['date_seance'] !== '0000-00-00';
+                                    $is_en_retard = false;
+                                    $jours_retard = 0;
+                                    
+                                    if ($is_date_valid) {
+                                        $date_seance = new DateTime($seance['date_seance']);
+                                        $today = new DateTime();
+                                        $is_en_retard = $date_seance < $today;
+                                        $jours_retard = $is_en_retard ? $date_seance->diff($today)->days : 0;
+                                    }
+                                    
+                                    // Vérifier si l'utilisateur est le bénéficiaire
+                                    $est_beneficiaire = isset($seance['beneficiaire_id']) && ($seance['beneficiaire_id'] == $user_id);
                                 ?>
-                                    <div class="cotisation-card">
+                                    <div class="cotisation-card <?php echo $est_beneficiaire ? 'beneficiaire-card' : ''; ?>" 
+                                         style="<?php echo $est_beneficiaire ? 'border: 3px solid var(--accent-gold); background: linear-gradient(135deg, rgba(212, 175, 55, 0.05) 0%, rgba(248, 250, 252, 0.95) 100%);' : ''; ?>">
+                                        
                                         <div class="cotisation-header">
                                             <div>
                                                 <div class="cotisation-name"><?php echo htmlspecialchars($seance['nom_tontine']); ?></div>
-                                                <span class="status-badge <?php echo $is_en_retard ? 'status-en-retard' : 'status-en-attente'; ?>">
-                                                    <i class="fas fa-<?php echo $is_en_retard ? 'exclamation-triangle' : 'clock'; ?>"></i>
-                                                    <?php echo $is_en_retard ? 'En retard' : 'À payer'; ?>
+                                                <span class="status-badge <?php echo $is_en_retard ? 'status-en-retard' : ($est_beneficiaire ? 'status-beneficiaire' : 'status-en-attente'); ?>">
+                                                    <i class="fas fa-<?php echo $est_beneficiaire ? 'trophy' : ($is_en_retard ? 'exclamation-triangle' : 'clock'); ?>"></i>
+                                                    <?php echo $est_beneficiaire ? 'Vous êtes bénéficiaire' : ($is_en_retard ? 'En retard' : 'À payer'); ?>
                                                 </span>
                                             </div>
                                         </div>
 
                                         <div class="cotisation-details">
+                                            <?php if ($is_date_valid): ?>
                                             <div class="cotisation-detail">
                                                 <i class="fas fa-calendar-alt"></i>
                                                 <span>Date de la séance: <strong><?php echo date('d/m/Y', strtotime($seance['date_seance'])); ?></strong></span>
                                             </div>
+                                            <?php else: ?>
+                                            <div class="cotisation-detail">
+                                                <i class="fas fa-calendar-alt"></i>
+                                                <span>Date de la séance: <strong>Non définie</strong></span>
+                                            </div>
+                                            <?php endif; ?>
+                                            
                                             <div class="cotisation-detail">
                                                 <i class="fas fa-money-bill-wave"></i>
                                                 <span>Montant dû: <strong class="amount"><?php echo number_format($seance['montant_cotisation'], 0, ',', ' '); ?> FCFA</strong></span>
                                             </div>
+                                            
+                                            <!-- Information du bénéficiaire -->
+                                            <div class="cotisation-detail">
+                                                <i class="fas fa-user-check"></i>
+                                                <span>
+                                                    <?php if($est_beneficiaire): ?>
+                                                        <strong style="color: var(--accent-gold);">🎉 Félicitations ! Vous recevez les cotisations de cette séance</strong>
+                                                    <?php elseif(isset($seance['beneficiaire_id'])): ?>
+                                                        Bénéficiaire: <strong><?php echo htmlspecialchars($seance['beneficiaire_prenom'] . ' ' . $seance['beneficiaire_nom']); ?></strong>
+                                                    <?php elseif($is_en_retard): ?>
+                                                        <em>Bénéficiaire en cours de désignation...</em>
+                                                    <?php else: ?>
+                                                        <em>Bénéficiaire sera désigné le jour de la séance</em>
+                                                    <?php endif; ?>
+                                                </span>
+                                            </div>
+                                            
                                             <?php if ($is_en_retard): ?>
                                                 <div class="cotisation-detail">
                                                     <i class="fas fa-exclamation-triangle"></i>
@@ -1472,17 +1675,32 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                             <?php endif; ?>
                                         </div>
 
+                                        <!-- Si l'utilisateur est bénéficiaire, afficher le montant total qu'il recevra -->
+                                        <?php if($est_beneficiaire && isset($seance['montant_gagne'])): ?>
+                                            <div class="cotisation-detail" style="background: rgba(212, 175, 55, 0.1); padding: 15px; border-radius: 8px; margin-top: 15px;">
+                                                <i class="fas fa-trophy"></i>
+                                                <span>
+                                                    <strong style="color: var(--accent-gold);">
+                                                        💰 Montant à recevoir: <?php echo number_format($seance['montant_gagne'], 0, ',', ' '); ?> FCFA
+                                                    </strong>
+                                                    <small style="display: block; color: #8a6d3b; margin-top: 5px;">
+                                                        (Total des cotisations de cette séance)
+                                                    </small>
+                                                </span>
+                                            </div>
+                                        <?php endif; ?>
+
                                         <form method="POST" action="" class="payment-form">
-                                            <input type="hidden" name="id_tontine" value="<?php echo $seance['id_tontine']; ?>">
-                                            <input type="hidden" name="id_seance" value="<?php echo $seance['id_seance']; ?>">
-                                            <input type="hidden" name="montant" value="<?php echo $seance['montant_cotisation']; ?>">
+                                            <input type="hidden" name="id_tontine" value="<?php echo $seance['id_tontine'] ?? ''; ?>">
+                                            <input type="hidden" name="id_seance" value="<?php echo $seance['id_seance'] ?? ''; ?>">
+                                            <input type="hidden" name="montant" value="<?php echo $seance['montant_cotisation'] ?? 0; ?>">
 
                                             <div class="form-group">
-                                                <label for="date_paiement_<?php echo $seance['id_seance']; ?>" class="form-label">
+                                                <label for="date_paiement_<?php echo $seance['id_seance'] ?? ''; ?>" class="form-label">
                                                     <i class="fas fa-calendar-check"></i> Date de paiement
                                                 </label>
                                                 <input type="date"
-                                                    id="date_paiement_<?php echo $seance['id_seance']; ?>"
+                                                    id="date_paiement_<?php echo $seance['id_seance'] ?? ''; ?>"
                                                     name="date_paiement"
                                                     class="form-control"
                                                     value="<?php echo date('Y-m-d'); ?>"
@@ -1491,7 +1709,7 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
 
                                             <div class="btn-group">
                                                 <button type="submit" name="payer_cotisation" class="btn btn-primary">
-                                                    <i class="fas fa-credit-card"></i> Payer <?php echo number_format($seance['montant_cotisation'], 0, ',', ' '); ?> FCFA
+                                                    <i class="fas fa-credit-card"></i> Payer <?php echo number_format($seance['montant_cotisation'] ?? 0, 0, ',', ' '); ?> FCFA
                                                 </button>
                                             </div>
                                         </form>
@@ -1543,12 +1761,16 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                             <th>Tontine</th>
                                             <th>Séance</th>
                                             <th>Montant</th>
+                                            <th>Bénéficiaire</th>
                                             <th>Statut</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php foreach ($historique_cotisations as $cotisation): ?>
+                                        <?php foreach ($historique_cotisations as $cotisation): 
+                                            $est_beneficiaire = isset($cotisation['beneficiaire_id']) && ($cotisation['beneficiaire_id'] == $user_id);
+                                            $is_date_valid = isset($cotisation['date_seance']) && $cotisation['date_seance'] && $cotisation['date_seance'] !== '0000-00-00';
+                                        ?>
                                             <tr>
                                                 <td>
                                                     <div style="font-weight: 500; color: var(--text-dark);">
@@ -1563,13 +1785,35 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                                     </div>
                                                 </td>
                                                 <td>
+                                                    <?php if ($is_date_valid): ?>
                                                     <div style="color: var(--text-dark);">
                                                         <i class="fas fa-calendar-alt" style="color: var(--text-light); margin-right: 8px;"></i>
                                                         <?php echo date('d/m/Y', strtotime($cotisation['date_seance'])); ?>
                                                     </div>
+                                                    <?php else: ?>
+                                                    <div style="color: var(--text-light);">
+                                                        <i class="fas fa-question" style="color: var(--text-light); margin-right: 8px;"></i>
+                                                        Date non définie
+                                                    </div>
+                                                    <?php endif; ?>
                                                 </td>
                                                 <td>
                                                     <strong class="amount"><?php echo number_format($cotisation['montant'], 0, ',', ' '); ?> FCFA</strong>
+                                                </td>
+                                                <td>
+                                                    <?php if($est_beneficiaire): ?>
+                                                        <span class="chip chip-gold">
+                                                            <i class="fas fa-user"></i> Vous
+                                                        </span>
+                                                    <?php elseif(isset($cotisation['beneficiaire_prenom'])): ?>
+                                                        <span class="chip chip-info">
+                                                            <i class="fas fa-user"></i> <?php echo htmlspecialchars($cotisation['beneficiaire_prenom'] . ' ' . $cotisation['beneficiaire_nom']); ?>
+                                                        </span>
+                                                    <?php else: ?>
+                                                        <span class="chip chip-warning">
+                                                            <i class="fas fa-question"></i> Non désigné
+                                                        </span>
+                                                    <?php endif; ?>
                                                 </td>
                                                 <td>
                                                     <span class="status-badge status-paye">
@@ -1621,6 +1865,23 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                     </div>
                                     <div class="stat-label">Total <?php echo $current_year; ?></div>
                                 </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-trophy"></i>
+                                    </div>
+                                    <div class="stat-number neutral">
+                                        <?php
+                                        $beneficiaire_count = 0;
+                                        foreach ($historique_cotisations as $cotisation) {
+                                            if (isset($cotisation['beneficiaire_id']) && $cotisation['beneficiaire_id'] == $user_id) {
+                                                $beneficiaire_count++;
+                                            }
+                                        }
+                                        echo $beneficiaire_count;
+                                        ?>
+                                    </div>
+                                    <div class="stat-label">Séances Gagnées</div>
+                                </div>
                             </div>
                         <?php else: ?>
                             <div class="empty-state">
@@ -1651,7 +1912,7 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
 
                             <div class="cotisations-grid">
                                 <?php foreach ($mes_benefices as $benefice): ?>
-                                    <div class="cotisation-card">
+                                    <div class="cotisation-card beneficiaire-card">
                                         <div class="cotisation-header">
                                             <div>
                                                 <div class="cotisation-name"><?php echo htmlspecialchars($benefice['nom_tontine']); ?></div>
@@ -1666,10 +1927,12 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                                 <i class="fas fa-calendar-alt"></i>
                                                 <span>Date du gain: <strong><?php echo date('d/m/Y', strtotime($benefice['date_gain'])); ?></strong></span>
                                             </div>
+                                            <?php if (isset($benefice['date_seance']) && $benefice['date_seance'] && $benefice['date_seance'] !== '0000-00-00'): ?>
                                             <div class="cotisation-detail">
                                                 <i class="fas fa-calendar-check"></i>
                                                 <span>Séance du: <strong><?php echo date('d/m/Y', strtotime($benefice['date_seance'])); ?></strong></span>
                                             </div>
+                                            <?php endif; ?>
                                             <div class="cotisation-detail">
                                                 <i class="fas fa-money-bill-wave"></i>
                                                 <span>Montant gagné: <strong class="amount amount-positive">+<?php echo number_format($benefice['montant_gagne'], 0, ',', ' '); ?> FCFA</strong></span>
@@ -1719,6 +1982,15 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                     </div>
                                     <div class="stat-label">Gains <?php echo $current_year; ?></div>
                                 </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-chart-line"></i>
+                                    </div>
+                                    <div class="stat-number neutral">
+                                        <?php echo number_format($total_gagnes / max(1, count($mes_benefices)), 0, ',', ' '); ?> FCFA
+                                    </div>
+                                    <div class="stat-label">Moyenne par gain</div>
+                                </div>
                             </div>
                         <?php else: ?>
                             <div class="empty-state">
@@ -1752,27 +2024,36 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                             <th>Tontine</th>
                                             <th>Montant</th>
                                             <th>Bénéficiaire</th>
-                                            <th>Statut</th>
+                                            <th>Statut Paiement</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php foreach ($mes_seances as $seance):
-                                            // Vérifier si l'utilisateur a payé cette séance
-                                            $stmt_paye = $pdo->prepare("SELECT COUNT(*) FROM cotisation WHERE id_membre = ? AND id_seance = ?");
-                                            $stmt_paye->execute([$user_id, $seance['id_seance']]);
-                                            $est_payee = $stmt_paye->fetchColumn() > 0;
-
-                                            $est_beneficiaire = $seance['id_beneficiaire'] == $user_id;
-                                            $date_seance = new DateTime($seance['date_seance']);
-                                            $today = new DateTime();
+                                            $est_beneficiaire = isset($seance['beneficiaire_id']) && ($seance['beneficiaire_id'] == $user_id);
+                                            $est_payee = $seance['est_payee'];
+                                            $is_date_valid = isset($seance['date_seance']) && $seance['date_seance'] && $seance['date_seance'] !== '0000-00-00';
+                                            $is_en_retard = false;
+                                            
+                                            if ($is_date_valid) {
+                                                $date_seance_obj = new DateTime($seance['date_seance']);
+                                                $today = new DateTime();
+                                                $is_en_retard = $date_seance_obj < $today;
+                                            }
                                         ?>
                                             <tr>
                                                 <td>
+                                                    <?php if ($is_date_valid): ?>
                                                     <div style="font-weight: 500; color: var(--text-dark);">
                                                         <i class="fas fa-calendar-alt" style="color: var(--accent-gold); margin-right: 8px;"></i>
                                                         <?php echo date('d/m/Y', strtotime($seance['date_seance'])); ?>
                                                     </div>
+                                                    <?php else: ?>
+                                                    <div style="color: var(--text-light);">
+                                                        <i class="fas fa-question" style="color: var(--text-light); margin-right: 8px;"></i>
+                                                        Date non définie
+                                                    </div>
+                                                    <?php endif; ?>
                                                 </td>
                                                 <td>
                                                     <div style="font-weight: 700; color: var(--navy-blue);">
@@ -1783,14 +2064,14 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                                     <strong><?php echo number_format($seance['montant_cotisation'], 0, ',', ' '); ?> FCFA</strong>
                                                 </td>
                                                 <td>
-                                                    <?php if ($seance['id_beneficiaire']): ?>
+                                                    <?php if (isset($seance['beneficiaire_id'])): ?>
                                                         <?php if ($est_beneficiaire): ?>
-                                                            <span class="chip chip-success">
+                                                            <span class="chip chip-gold">
                                                                 <i class="fas fa-user"></i> Vous
                                                             </span>
                                                         <?php else: ?>
                                                             <span class="chip chip-info">
-                                                                <i class="fas fa-user"></i> <?php echo htmlspecialchars($seance['prenom_beneficiaire'] . ' ' . $seance['nom_beneficiaire']); ?>
+                                                                <i class="fas fa-user"></i> <?php echo htmlspecialchars($seance['beneficiaire_prenom'] . ' ' . $seance['beneficiaire_nom']); ?>
                                                             </span>
                                                         <?php endif; ?>
                                                     <?php else: ?>
@@ -1805,7 +2086,7 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                                             <i class="fas fa-check"></i> Payé
                                                         </span>
                                                     <?php else: ?>
-                                                        <?php if ($date_seance < $today): ?>
+                                                        <?php if ($is_en_retard): ?>
                                                             <span class="chip chip-danger"><i class="fas fa-exclamation"></i> En retard</span>
                                                         <?php else: ?>
                                                             <span class="chip chip-warning"><i class="fas fa-clock"></i> À payer</span>
@@ -1815,13 +2096,18 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                                 <td>
                                                     <?php if (!$est_payee): ?>
                                                         <form method="POST" action="" style="display: inline;">
-                                                            <input type="hidden" name="id_tontine" value="<?php echo $seance['id_tontine']; ?>">
-                                                            <input type="hidden" name="id_seance" value="<?php echo $seance['id_seance']; ?>">
-                                                            <input type="hidden" name="montant" value="<?php echo $seance['montant_cotisation']; ?>">
+                                                            <input type="hidden" name="id_tontine" value="<?php echo $seance['id_tontine'] ?? ''; ?>">
+                                                            <input type="hidden" name="id_seance" value="<?php echo $seance['id_seance'] ?? ''; ?>">
+                                                            <input type="hidden" name="montant" value="<?php echo $seance['montant_cotisation'] ?? 0; ?>">
+                                                            <input type="hidden" name="date_paiement" value="<?php echo date('Y-m-d'); ?>">
                                                             <button type="submit" name="payer_cotisation" class="btn btn-primary btn-sm">
                                                                 <i class="fas fa-credit-card"></i> Payer
                                                             </button>
                                                         </form>
+                                                    <?php else: ?>
+                                                        <button type="button" class="btn btn-secondary btn-sm" onclick="showReceipt(<?php echo $seance['id_seance']; ?>)">
+                                                            <i class="fas fa-receipt"></i> Reçu
+                                                        </button>
                                                     <?php endif; ?>
                                                 </td>
                                             </tr>
@@ -1852,6 +2138,23 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                                     </div>
                                     <div class="stat-number negative"><?php echo count($seances_a_payer); ?></div>
                                     <div class="stat-label">Séances à Payer</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-trophy"></i>
+                                    </div>
+                                    <div class="stat-number neutral">
+                                        <?php
+                                        $beneficiaire_count = 0;
+                                        foreach ($mes_seances as $seance) {
+                                            if (isset($seance['beneficiaire_id']) && $seance['beneficiaire_id'] == $user_id) {
+                                                $beneficiaire_count++;
+                                            }
+                                        }
+                                        echo $beneficiaire_count;
+                                        ?>
+                                    </div>
+                                    <div class="stat-label">Séances Gagnées</div>
                                 </div>
                             </div>
                         <?php else: ?>
@@ -1970,6 +2273,14 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                 const onglet = urlParams.get('onglet') || 'a_payer';
                 changeTab(onglet);
             };
+
+            // Animation des cartes de bénéficiaire
+            $('.beneficiaire-card').each(function(index) {
+                $(this).css({
+                    'animation': 'pulse 2s infinite',
+                    'animation-delay': (index * 0.3) + 's'
+                });
+            });
         });
 
         function changeTab(tabName) {
@@ -2018,11 +2329,11 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                 title: 'Détails du Gain',
                 html: `
                     <div style="text-align: center; padding: 20px;">
-                        <i class="fas fa-trophy" style="font-size: 3rem; color: #8b5cf6; margin-bottom: 15px;"></i>
+                        <i class="fas fa-trophy" style="font-size: 3rem; color: #d4af37; margin-bottom: 15px;"></i>
                         <h3 style="color: var(--navy-blue); margin-bottom: 10px;">Félicitations !</h3>
                         <p style="color: var(--text-light);">Vous avez été sélectionné comme bénéficiaire de cette tontine.</p>
-                        <div style="margin-top: 20px; padding: 15px; background: linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(221, 214, 254, 0.1) 100%); border-radius: 8px;">
-                            <p style="margin: 5px 0; color: #7c3aed;">
+                        <div style="margin-top: 20px; padding: 15px; background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(230, 195, 77, 0.1) 100%); border-radius: 8px;">
+                            <p style="margin: 5px 0; color: #b58900;">
                                 <i class="fas fa-info-circle"></i> Le montant gagné correspond au total des cotisations de la séance.
                             </p>
                         </div>
@@ -2032,7 +2343,7 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
                 showCancelButton: false,
                 focusConfirm: false,
                 confirmButtonText: 'Fermer',
-                confirmButtonColor: '#8b5cf6',
+                confirmButtonColor: '#d4af37',
             });
         }
 
@@ -2041,6 +2352,23 @@ $pourcentage_paye = $total_cotisations > 0 ? round((count($historique_cotisation
             $(this).css('animation-delay', (index * 0.1) + 's');
             $(this).addClass('animate__animated animate__fadeIn');
         });
+
+        // Animation pulsante pour les cartes de bénéficiaire
+        const style = document.createElement('style');
+        style.innerHTML = `
+            @keyframes pulse {
+                0% {
+                    box-shadow: 0 4px 20px rgba(212, 175, 55, 0.4);
+                }
+                50% {
+                    box-shadow: 0 4px 30px rgba(212, 175, 55, 0.6);
+                }
+                100% {
+                    box-shadow: 0 4px 20px rgba(212, 175, 55, 0.4);
+                }
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 </body>
 </html>

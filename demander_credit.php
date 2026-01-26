@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             // Calculer le taux d'intérêt selon le type de crédit
-            $taux_interet = 5.00; // Taux par défaut
+            $taux_interet = 5.00; // Taux par défaut pour 'standard'
             
             if ($type_credit === 'urgent') {
                 $taux_interet = 6.50;
@@ -80,8 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Insérer la demande dans la table crédit avec statut "demande"
                     $stmt_insert = $pdo->prepare("
                         INSERT INTO credit 
-                        (id_membre, montant, date_emprunt, taux_interet, duree_mois, montant_restant, statut, raison, mode_remboursement, type_credit)
-                        VALUES (?, ?, NOW(), ?, ?, ?, 'demande', ?, ?, ?)
+                        (id_membre, montant, date_emprunt, taux_interet, duree_mois, montant_restant, statut, type_credit)
+                        VALUES (?, ?, NOW(), ?, ?, ?, 'demande', ?)
                     ");
                     
                     $stmt_insert->execute([
@@ -90,24 +90,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $taux_interet,
                         $duree_mois,
                         $montant, // montant_restant initial = montant emprunté
-                        $raison,
-                        $mode_remboursement,
                         $type_credit
                     ]);
                     
                     $credit_id = $pdo->lastInsertId();
                     
-                    // Enregistrer l'historique de la demande
-                    $stmt_histo = $pdo->prepare("
-                        INSERT INTO historique_demandes_credit 
-                        (id_credit, action, date_action, commentaire)
-                        VALUES (?, 'demande_soumise', NOW(), 'Demande de crédit soumise par le membre')
-                    ");
-                    $stmt_histo->execute([$credit_id]);
+                    // Enregistrer la raison dans une table séparée ou dans un champ additionnel
+                    // Note: La table crédit dans votre base de données n'a pas de champ 'raison'
+                    // Si vous avez besoin de stocker la raison, vous devrez ajouter ce champ à la table
+                    // Pour l'instant, on va stocker la raison dans une table séparée si elle existe
+                    try {
+                        $stmt_raison = $pdo->prepare("
+                            INSERT INTO historique_demandes_credit 
+                            (id_credit, action, date_action, commentaire)
+                            VALUES (?, 'demande_soumise', NOW(), ?)
+                        ");
+                        $stmt_raison->execute([$credit_id, "Raison: " . $raison]);
+                    } catch (Exception $e) {
+                        // La table n'existe peut-être pas, on continue sans erreur
+                    }
                     
                     $success = "Votre demande de crédit a été soumise avec succès ! 
                                <br><strong>ID Demande:</strong> #{$credit_id}
                                <br><strong>Montant:</strong> " . number_format($montant, 0, ',', ' ') . " FCFA
+                               <br><strong>Type:</strong> " . ucfirst(str_replace('_', ' ', $type_credit)) . "
                                <br><strong>Durée:</strong> {$duree_mois} mois
                                <br><strong>Taux:</strong> {$taux_interet}%
                                <br><strong>Mensualité estimée:</strong> " . number_format($mensualite, 0, ',', ' ') . " FCFA
@@ -153,604 +159,1086 @@ foreach ($mes_credits as $credit) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Demande de Crédit | Gestion de Tontine</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --navy-blue: #0f1a3a;
+            --dark-blue: #1a2b55;
+            --medium-blue: #2d4a8a;
+            --light-blue: #3a5fc0;
+            --accent-gold: #d4af37;
+            --accent-light: #e6c34d;
+            --pure-white: #ffffff;
+            --text-dark: #1e293b;
+            --text-light: #64748b;
+            --bg-light: #f8fafc;
+            --glass-bg: rgba(255, 255, 255, 0.9);
+            --shadow-light: rgba(15, 26, 58, 0.1);
+            --shadow-medium: rgba(15, 26, 58, 0.2);
+            --border-radius: 12px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
         * {
-            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #0f1a3a 0%, #1a2b55 100%);
             min-height: 100vh;
+            color: var(--text-dark);
+            width: 100%;
+            overflow-x: hidden;
         }
 
-        .glass-card {
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+            width: 100%;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .header-title {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .header-title h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: white;
+        }
+
+        .header-title p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1rem;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .date-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 10px 16px;
+            border-radius: 10px;
+            color: white;
+            font-size: 0.9rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .role-badge {
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-light));
+            padding: 10px 20px;
+            border-radius: 10px;
+            color: var(--navy-blue);
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 30px;
+            width: 100%;
+            padding-bottom: 100px;
+        }
+
+        /* Content Card */
+        .content-card {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            margin-bottom: 30px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .card-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title i {
+            color: var(--accent-gold);
+        }
+
+        /* Statistics Grid */
+        .stats-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 30px;
         }
 
         .stat-card {
-            transition: all 0.3s ease;
-            border-left: 4px solid;
+            flex: 1;
+            min-width: 200px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 25px;
+            transition: var(--transition);
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
 
         .stat-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
         }
 
-        .input-group {
-            position: relative;
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
         }
 
-        .input-icon {
-            position: absolute;
-            left: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #64748b;
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            color: white;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
         }
 
-        .input-with-icon {
-            padding-left: 45px !important;
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--text-light);
+            font-weight: 600;
+        }
+
+        /* Form Styles */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: var(--text-dark);
+            font-size: 0.9rem;
+        }
+
+        .form-group label i {
+            color: var(--accent-gold);
+            margin-right: 8px;
+        }
+
+        .form-control {
+            padding: 14px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 1rem;
+            transition: var(--transition);
+            background: white;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent-gold);
+            box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1);
+        }
+
+        .credit-type-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 10px;
         }
 
         .credit-type-card {
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.08), rgba(58, 95, 192, 0.08));
             border: 2px solid transparent;
-            transition: all 0.3s ease;
+            border-radius: 12px;
+            padding: 20px;
             cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
         }
 
         .credit-type-card:hover {
             transform: translateY(-3px);
-            border-color: #3b82f6;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
         }
 
         .credit-type-card.selected {
-            border-color: #3b82f6;
-            background: #eff6ff;
+            border-color: var(--accent-gold);
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(58, 95, 192, 0.15));
+        }
+
+        .credit-type-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            margin-bottom: 15px;
+        }
+
+        .credit-type-title {
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 5px;
+        }
+
+        .credit-type-desc {
+            font-size: 0.8rem;
+            color: var(--text-light);
+        }
+
+        .credit-type-badge {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: white;
+        }
+
+        /* Sliders */
+        .range-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
         }
 
         .range-value {
-            color: #3b82f6;
-            font-weight: 600;
-            font-size: 1.1rem;
+            min-width: 100px;
+            font-weight: 700;
+            color: var(--medium-blue);
+            font-size: 1.2rem;
         }
 
+        input[type="range"] {
+            flex: 1;
+            height: 8px;
+            border-radius: 4px;
+            background: #e2e8f0;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--accent-gold);
+            cursor: pointer;
+            -webkit-appearance: none;
+            box-shadow: 0 4px 10px rgba(212, 175, 55, 0.5);
+        }
+
+        /* Simulation Card */
+        .simulation-card {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border: 2px solid var(--light-blue);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .simulation-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--dark-blue);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .simulation-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .simulation-item {
+            text-align: center;
+        }
+
+        .simulation-label {
+            font-size: 0.9rem;
+            color: var(--text-light);
+            margin-bottom: 8px;
+        }
+
+        .simulation-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: var(--dark-blue);
+        }
+
+        /* Table */
         .table-container {
             overflow-x: auto;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
         }
 
         table {
             width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
+            border-collapse: collapse;
+            min-width: 600px;
         }
 
         thead {
-            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+            background: linear-gradient(135deg, var(--medium-blue), var(--light-blue));
             color: white;
         }
 
         th {
-            padding: 16px;
+            padding: 14px 16px;
             text-align: left;
-            font-weight: 600;
-            font-size: 14px;
+            font-weight: 700;
+            font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
         tbody tr {
-            transition: all 0.2s ease;
+            border-bottom: 1px solid #e2e8f0;
+            transition: var(--transition);
         }
 
         tbody tr:hover {
-            background: #f0f9ff;
+            background: rgba(212, 175, 55, 0.05);
+            cursor: pointer;
         }
 
         td {
             padding: 14px 16px;
-            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.9rem;
         }
 
         .status-badge {
             padding: 6px 12px;
             border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: 0.75rem;
+            font-weight: 700;
             display: inline-block;
         }
 
-        .status-demande {
-            background: #fef3c7;
-            color: #92400e;
+        .status-demande { background: #fef3c7; color: #92400e; }
+        .status-en_cours { background: #d1fae5; color: #065f46; }
+        .status-en_retard { background: #fee2e2; color: #991b1b; }
+        .status-rembourse { background: #dbeafe; color: #1e40af; }
+        .status-rejete { background: #f3f4f6; color: #6b7280; }
+
+        /* Info Cards */
+        .info-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 30px;
         }
 
-        .status-en_cours {
-            background: #d1fae5;
-            color: #065f46;
+        .info-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.7));
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
 
-        .status-en_retard {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .status-rembourse {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .status-rejete {
-            background: #f3f4f6;
-            color: #6b7280;
-        }
-
-        .montant-cell {
+        .info-card-title {
+            font-size: 1rem;
             font-weight: 700;
-            font-size: 15px;
+            color: var(--text-dark);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .progress-bar {
-            height: 8px;
-            border-radius: 4px;
-            background: #e5e7eb;
-            overflow: hidden;
+        .info-card-title i {
+            color: var(--accent-gold);
         }
 
-        .progress-fill {
+        .info-card-list {
+            list-style: none;
+        }
+
+        .info-card-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
+
+        .info-card-list li:last-child {
+            border-bottom: none;
+        }
+
+        .info-card-list li i {
+            color: var(--medium-blue);
+            font-size: 0.8rem;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 28px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: var(--transition);
+            justify-content: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-light));
+            color: var(--navy-blue);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(212, 175, 55, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, var(--medium-blue), var(--light-blue));
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(58, 95, 192, 0.4);
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+        }
+
+        .alert-error {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
+            border-left: 4px solid #ef4444;
+        }
+
+        .alert-success {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
+            border-left: 4px solid #22c55e;
+        }
+
+        .alert-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .alert-error .alert-icon { color: #ef4444; }
+        .alert-success .alert-icon { color: #22c55e; }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-title {
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .alert-error .alert-title { color: #ef4444; }
+        .alert-success .alert-title { color: #22c55e; }
+
+        .alert-message {
+            color: white;
+            line-height: 1.6;
+        }
+
+        /* Mobile Navigation */
+        .mobile-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(180deg, #0f1a3a 0%, #1a2b55 100%);
+            backdrop-filter: blur(10px);
+            border-top: 2px solid var(--accent-gold);
+            z-index: 1000;
+            height: 70px;
+            padding: 0 10px;
+        }
+
+        .mobile-nav-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
             height: 100%;
-            border-radius: 4px;
-            background: linear-gradient(90deg, #0ea5e9, #3b82f6);
-            transition: width 0.5s ease;
         }
 
-        .simulation-card {
-            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-            border: 1px solid #bae6fd;
+        .mobile-nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 4px;
+            color: rgba(255, 255, 255, 0.6);
+            text-decoration: none;
+            transition: var(--transition);
+            border-radius: 8px;
+            min-width: 60px;
         }
 
-        .simulation-value {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #0f766e;
+        .mobile-nav-item:hover,
+        .mobile-nav-item.active {
+            color: var(--accent-gold);
+            background: rgba(212, 175, 55, 0.15);
+        }
+
+        .mobile-nav-icon {
+            font-size: 22px;
+            margin-bottom: 4px;
+        }
+
+        .mobile-nav-text {
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-content {
+                padding: 20px;
+                padding-bottom: 80px;
+            }
+            
+            .form-grid,
+            .credit-type-grid,
+            .simulation-grid,
+            .info-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .mobile-nav {
+                display: block;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header-top {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
+            }
+            
+            .stats-grid {
+                gap: 15px;
+            }
+            
+            .stat-card {
+                min-width: calc(50% - 15px);
+            }
+            
+            .content-card {
+                padding: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .main-content {
+                padding: 15px;
+                padding-bottom: 80px;
+            }
+            
+            .header-title h1 {
+                font-size: 1.5rem;
+            }
+            
+            .stat-card {
+                min-width: 100%;
+            }
+            
+            .stat-value {
+                font-size: 1.5rem;
+            }
         }
     </style>
 </head>
-<body class="p-4 md:p-6">
-    <div class="max-w-6xl mx-auto">
-        <!-- Header -->
-        <div class="mb-8">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-800 mb-2">
-                        <i class="fas fa-hand-holding-usd text-green-600 mr-2"></i>
-                        Demande de Crédit
-                    </h1>
-                    <p class="text-gray-600">Soumettez votre demande de crédit et suivez son statut</p>
-                </div>
-
-                <div class="flex items-center gap-3">
-                    <a href="dashboard.php" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium flex items-center gap-2">
-                        <i class="fas fa-arrow-left"></i>
-                        Retour
-                    </a>
-                    <div class="bg-gradient-to-r from-green-600 to-emerald-700 text-white px-4 py-2 rounded-lg shadow-md">
-                        <span class="text-xs uppercase font-semibold"><?php echo htmlspecialchars($user['prenom'] . ' ' . $user['nom']); ?></span>
+<body>
+    <div class="app-container">
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-top">
+                    <div class="header-title">
+                        <h1><i class="fas fa-hand-holding-usd"></i> Demande de Crédit</h1>
+                        <p>Bienvenue <strong><?php echo htmlspecialchars($user['prenom'] . ' ' . $user['nom']); ?></strong> !</p>
+                    </div>
+                    <div class="header-actions">
+                        <div class="date-badge">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span id="currentDate"></span>
+                        </div>
+                        <a href="dashboard.php" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i>
+                            Retour au Dashboard
+                        </a>
                     </div>
                 </div>
-            </div>
-        </div>
+            </header>
 
-        <!-- Statistiques personnelles -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="stat-card bg-white p-6 rounded-xl border-l-4 border-blue-500">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="p-3 bg-blue-100 rounded-lg">
-                        <i class="fas fa-wallet text-blue-600 text-2xl"></i>
+            <!-- Statistics -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                            <i class="fas fa-credit-card"></i>
+                        </div>
                     </div>
-                    <span class="text-2xl font-bold text-blue-600"><?php echo count($mes_credits); ?></span>
+                    <div class="stat-value"><?php echo count($mes_credits); ?></div>
+                    <div class="stat-label">Mes Crédits</div>
                 </div>
-                <h3 class="font-bold text-gray-800 mb-1">Mes Crédits</h3>
-                <p class="text-sm text-gray-600">Total des demandes</p>
-            </div>
 
-            <div class="stat-card bg-white p-6 rounded-xl border-l-4 border-green-500">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="p-3 bg-green-100 rounded-lg">
-                        <i class="fas fa-money-bill-wave text-green-600 text-2xl"></i>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb, #f5576c);">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
                     </div>
-                    <span class="text-2xl font-bold text-green-600">
-                        <?php echo number_format($total_emprunte, 0, ',', ' '); ?> FCFA
-                    </span>
+                    <div class="stat-value"><?php echo number_format($total_emprunte, 0, ',', ' '); ?> F</div>
+                    <div class="stat-label">Total Emprunté</div>
                 </div>
-                <h3 class="font-bold text-gray-800 mb-1">Total Emprunté</h3>
-                <p class="text-sm text-gray-600">Somme empruntée</p>
-            </div>
 
-            <div class="stat-card bg-white p-6 rounded-xl border-l-4 border-yellow-500">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="p-3 bg-yellow-100 rounded-lg">
-                        <i class="fas fa-hourglass-half text-yellow-600 text-2xl"></i>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe, #00f2fe);">
+                            <i class="fas fa-hourglass-half"></i>
+                        </div>
                     </div>
-                    <span class="text-2xl font-bold text-yellow-600">
-                        <?php echo $credits_en_cours; ?>
-                    </span>
+                    <div class="stat-value"><?php echo $credits_en_cours; ?></div>
+                    <div class="stat-label">Crédits en Cours</div>
                 </div>
-                <h3 class="font-bold text-gray-800 mb-1">Crédits en Cours</h3>
-                <p class="text-sm text-gray-600">En cours de remboursement</p>
-            </div>
-        </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- Formulaire de demande -->
-            <div class="lg:col-span-2">
-                <div class="glass-card p-6 mb-6">
-                    <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
-                        <i class="fas fa-edit mr-2 text-blue-600"></i>
-                        Formulaire de Demande de Crédit
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a, #fee140);">
+                            <i class="fas fa-balance-scale"></i>
+                        </div>
+                    </div>
+                    <div class="stat-value"><?php echo number_format($total_restant, 0, ',', ' '); ?> F</div>
+                    <div class="stat-label">Reste à Payer</div>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <?php if ($error): ?>
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-circle alert-icon"></i>
+                    <div class="alert-content">
+                        <div class="alert-title">Erreur</div>
+                        <div class="alert-message"><?php echo $error; ?></div>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($success): ?>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle alert-icon"></i>
+                    <div class="alert-content">
+                        <div class="alert-title">Succès !</div>
+                        <div class="alert-message"><?php echo $success; ?></div>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <!-- Form Section -->
+            <div class="content-card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-edit"></i>
+                        Formulaire de Demande
                     </h3>
-
-                    <?php if ($error): ?>
-                        <div class="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
-                            <div class="flex">
-                                <div class="flex-shrink-0">
-                                    <i class="fas fa-exclamation-circle text-red-500 mt-1"></i>
-                                </div>
-                                <div class="ml-3">
-                                    <p class="text-sm text-red-700"><?php echo $error; ?></p>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endif; ?>
-
-                    <?php if ($success): ?>
-                        <div class="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-r-lg">
-                            <div class="flex">
-                                <div class="flex-shrink-0">
-                                    <i class="fas fa-check-circle text-green-500 mt-1"></i>
-                                </div>
-                                <div class="ml-3">
-                                    <p class="text-sm text-green-700"><?php echo $success; ?></p>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endif; ?>
-
-                    <form method="POST" action="" id="creditForm" class="space-y-6">
-                        <!-- Type de crédit -->
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-3">
-                                <i class="fas fa-tag mr-1"></i> Type de Crédit
-                            </label>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div class="credit-type-card p-4 border rounded-lg" onclick="selectCreditType('standard')">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                                            <i class="fas fa-money-bill-wave text-blue-600"></i>
-                                        </div>
-                                        <div>
-                                            <h4 class="font-semibold text-gray-800">Crédit Standard</h4>
-                                            <p class="text-xs text-gray-600">Taux: 5.0%</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="credit-type-card p-4 border rounded-lg" onclick="selectCreditType('urgent')">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                                            <i class="fas fa-bolt text-red-600"></i>
-                                        </div>
-                                        <div>
-                                            <h4 class="font-semibold text-gray-800">Crédit Urgent</h4>
-                                            <p class="text-xs text-gray-600">Taux: 6.5%</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="credit-type-card p-4 border rounded-lg" onclick="selectCreditType('long_terme')">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                                            <i class="fas fa-calendar-alt text-green-600"></i>
-                                        </div>
-                                        <div>
-                                            <h4 class="font-semibold text-gray-800">Crédit Long Terme</h4>
-                                            <p class="text-xs text-gray-600">Taux: 4.5%</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="credit-type-card p-4 border rounded-lg" onclick="selectCreditType('projet')">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                                            <i class="fas fa-project-diagram text-purple-600"></i>
-                                        </div>
-                                        <div>
-                                            <h4 class="font-semibold text-gray-800">Crédit Projet</h4>
-                                            <p class="text-xs text-gray-600">Taux: 4.0%</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <input type="hidden" name="type_credit" id="type_credit" value="standard">
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <!-- Montant -->
-                            <div>
-                                <label for="montant" class="block text-sm font-medium text-gray-700 mb-2">
-                                    <i class="fas fa-money-bill-wave mr-1"></i> Montant souhaité (FCFA)
-                                </label>
-                                <div class="input-group">
-                                    <div class="input-icon">
-                                        <i class="fas fa-franc-sign"></i>
-                                    </div>
-                                    <input type="number" id="montant" name="montant" min="10000" max="10000000" step="1000"
-                                        value="<?php echo htmlspecialchars($_POST['montant'] ?? ''); ?>"
-                                        class="input-with-icon w-full px-4 py-3 rounded-lg border-2 border-gray-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                        placeholder="Ex: 500000"
-                                        required
-                                        oninput="updateSimulation()">
-                                </div>
-                                <div class="mt-2 text-sm text-gray-500">
-                                    Min: 10,000 FCFA - Max: 10,000,000 FCFA
-                                </div>
-                                <div class="mt-2">
-                                    <input type="range" id="montant_range" min="10000" max="10000000" step="1000" 
-                                        value="<?php echo $_POST['montant'] ?? 500000; ?>"
-                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                                        oninput="document.getElementById('montant').value = this.value; updateSimulation()">
-                                </div>
-                            </div>
-
-                            <!-- Durée -->
-                            <div>
-                                <label for="duree_mois" class="block text-sm font-medium text-gray-700 mb-2">
-                                    <i class="fas fa-calendar-alt mr-1"></i> Durée (mois)
-                                </label>
-                                <div class="input-group">
-                                    <div class="input-icon">
-                                        <i class="fas fa-clock"></i>
-                                    </div>
-                                    <input type="number" id="duree_mois" name="duree_mois" min="3" max="60" step="1"
-                                        value="<?php echo htmlspecialchars($_POST['duree_mois'] ?? '12'); ?>"
-                                        class="input-with-icon w-full px-4 py-3 rounded-lg border-2 border-gray-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                        placeholder="Ex: 12"
-                                        required
-                                        oninput="updateSimulation()">
-                                </div>
-                                <div class="mt-2 text-sm text-gray-500">
-                                    Min: 3 mois - Max: 60 mois
-                                </div>
-                                <div class="mt-2">
-                                    <input type="range" id="duree_range" min="3" max="60" step="1"
-                                        value="<?php echo $_POST['duree_mois'] ?? 12; ?>"
-                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                                        oninput="document.getElementById('duree_mois').value = this.value; updateSimulation()">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Mode de remboursement -->
-                        <div>
-                            <label for="mode_remboursement" class="block text-sm font-medium text-gray-700 mb-2">
-                                <i class="fas fa-calendar-check mr-1"></i> Mode de Remboursement
-                            </label>
-                            <select name="mode_remboursement" id="mode_remboursement"
-                                class="w-full px-4 py-3 rounded-lg border-2 border-gray-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                onchange="updateSimulation()">
-                                <option value="mensuel" <?php echo ($_POST['mode_remboursement'] ?? 'mensuel') == 'mensuel' ? 'selected' : ''; ?>>Mensuel</option>
-                                <option value="trimestriel" <?php echo ($_POST['mode_remboursement'] ?? '') == 'trimestriel' ? 'selected' : ''; ?>>Trimestriel</option>
-                                <option value="semestriel" <?php echo ($_POST['mode_remboursement'] ?? '') == 'semestriel' ? 'selected' : ''; ?>>Semestriel</option>
-                                <option value="annuel" <?php echo ($_POST['mode_remboursement'] ?? '') == 'annuel' ? 'selected' : ''; ?>>Annuel</option>
-                            </select>
-                        </div>
-
-                        <!-- Raison -->
-                        <div>
-                            <label for="raison" class="block text-sm font-medium text-gray-700 mb-2">
-                                <i class="fas fa-comment-dots mr-1"></i> Raison de la demande
-                            </label>
-                            <textarea id="raison" name="raison" rows="4"
-                                class="w-full px-4 py-3 rounded-lg border-2 border-gray-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                placeholder="Décrivez l'utilisation prévue du crédit..."
-                                required><?php echo htmlspecialchars($_POST['raison'] ?? ''); ?></textarea>
-                        </div>
-
-                        <!-- Simulation -->
-                        <div class="simulation-card p-6 rounded-lg">
-                            <h4 class="font-bold text-gray-800 mb-4 flex items-center">
-                                <i class="fas fa-calculator mr-2 text-blue-600"></i>
-                                Simulation du Remboursement
-                            </h4>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div class="text-center">
-                                    <div class="text-sm text-gray-600 mb-1">Mensualité</div>
-                                    <div id="mensualite" class="simulation-value">0 FCFA</div>
-                                </div>
-                                <div class="text-center">
-                                    <div class="text-sm text-gray-600 mb-1">Total Intérêts</div>
-                                    <div id="interet_total" class="simulation-value">0 FCFA</div>
-                                </div>
-                                <div class="text-center">
-                                    <div class="text-sm text-gray-600 mb-1">Total à Rembourser</div>
-                                    <div id="total_rembourser" class="simulation-value">0 FCFA</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Bouton de soumission -->
-                        <div class="pt-4 border-t border-gray-200">
-                            <button type="submit" class="w-full py-3 bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 text-white rounded-lg font-bold text-lg flex items-center justify-center gap-2 transition-all duration-300 transform hover:scale-[1.02]">
-                                <i class="fas fa-paper-plane"></i>
-                                Soumettre la Demande
-                            </button>
-                            <p class="text-xs text-gray-500 text-center mt-3">
-                                <i class="fas fa-info-circle mr-1"></i>
-                                Votre demande sera examinée par l'administrateur. Vous recevrez une notification une fois la décision prise.
-                            </p>
-                        </div>
-                    </form>
                 </div>
+
+                <form method="POST" action="" id="creditForm">
+                    <!-- Type de crédit -->
+                    <div class="form-group">
+                        <label><i class="fas fa-tag"></i> Type de Crédit</label>
+                        <div class="credit-type-grid">
+                            <div class="credit-type-card" onclick="selectCreditType('standard')">
+                                <div class="credit-type-icon" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                                    <i class="fas fa-money-bill-wave"></i>
+                                </div>
+                                <h4 class="credit-type-title">Standard</h4>
+                                <p class="credit-type-desc">Pour les besoins courants</p>
+                                <span class="credit-type-badge" style="background: #3b82f6;">5.0%</span>
+                            </div>
+
+                            <div class="credit-type-card" onclick="selectCreditType('urgent')">
+                                <div class="credit-type-icon" style="background: linear-gradient(135deg, #ef4444, #dc2626);">
+                                    <i class="fas fa-bolt"></i>
+                                </div>
+                                <h4 class="credit-type-title">Urgent</h4>
+                                <p class="credit-type-desc">Besoins immédiats</p>
+                                <span class="credit-type-badge" style="background: #ef4444;">6.5%</span>
+                            </div>
+
+                            <div class="credit-type-card" onclick="selectCreditType('long_terme')">
+                                <div class="credit-type-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
+                                    <i class="fas fa-calendar-alt"></i>
+                                </div>
+                                <h4 class="credit-type-title">Long Terme</h4>
+                                <p class="credit-type-desc">Investissements</p>
+                                <span class="credit-type-badge" style="background: #10b981;">4.5%</span>
+                            </div>
+
+                            <div class="credit-type-card" onclick="selectCreditType('projet')">
+                                <div class="credit-type-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
+                                    <i class="fas fa-project-diagram"></i>
+                                </div>
+                                <h4 class="credit-type-title">Projet</h4>
+                                <p class="credit-type-desc">Financement de projets</p>
+                                <span class="credit-type-badge" style="background: #8b5cf6;">4.0%</span>
+                            </div>
+                        </div>
+                        <input type="hidden" name="type_credit" id="type_credit" value="standard">
+                    </div>
+
+                    <!-- Montant et Durée -->
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label><i class="fas fa-money-bill-wave"></i> Montant (FCFA)</label>
+                            <input type="number" id="montant" name="montant" min="10000" max="10000000" step="1000"
+                                value="<?php echo htmlspecialchars($_POST['montant'] ?? ''); ?>"
+                                class="form-control"
+                                placeholder="Ex: 500000"
+                                required
+                                oninput="updateSimulation()">
+                            <div class="range-group">
+                                <span class="range-value" id="montantValue">0 FCFA</span>
+                                <input type="range" id="montant_range" min="10000" max="10000000" step="1000" 
+                                    value="<?php echo $_POST['montant'] ?? 500000; ?>"
+                                    oninput="document.getElementById('montant').value = this.value; updateSimulation()">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label><i class="fas fa-calendar-alt"></i> Durée (mois)</label>
+                            <input type="number" id="duree_mois" name="duree_mois" min="3" max="60" step="1"
+                                value="<?php echo htmlspecialchars($_POST['duree_mois'] ?? '12'); ?>"
+                                class="form-control"
+                                placeholder="Ex: 12"
+                                required
+                                oninput="updateSimulation()">
+                            <div class="range-group">
+                                <span class="range-value" id="dureeValue">12 mois</span>
+                                <input type="range" id="duree_range" min="3" max="60" step="1"
+                                    value="<?php echo $_POST['duree_mois'] ?? 12; ?>"
+                                    oninput="document.getElementById('duree_mois').value = this.value; updateSimulation()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Raison -->
+                    <div class="form-group">
+                        <label><i class="fas fa-comment-dots"></i> Raison de la demande</label>
+                        <textarea id="raison" name="raison" rows="4"
+                            class="form-control"
+                            placeholder="Décrivez l'utilisation prévue du crédit..."
+                            required><?php echo htmlspecialchars($_POST['raison'] ?? ''); ?></textarea>
+                    </div>
+
+                    <!-- Simulation -->
+                    <div class="simulation-card">
+                        <h4 class="simulation-title">
+                            <i class="fas fa-calculator"></i>
+                            Simulation du Remboursement
+                        </h4>
+                        <div class="simulation-grid">
+                            <div class="simulation-item">
+                                <div class="simulation-label">Mensualité</div>
+                                <div id="mensualite" class="simulation-value">0 FCFA</div>
+                            </div>
+                            <div class="simulation-item">
+                                <div class="simulation-label">Total Intérêts</div>
+                                <div id="interet_total" class="simulation-value">0 FCFA</div>
+                            </div>
+                            <div class="simulation-item">
+                                <div class="simulation-label">Total à Rembourser</div>
+                                <div id="total_rembourser" class="simulation-value">0 FCFA</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div style="text-align: center; margin-top: 30px;">
+                        <button type="submit" class="btn btn-primary" style="min-width: 260px;">
+                            <i class="fas fa-paper-plane"></i>
+                            Soumettre la Demande
+                        </button>
+                    </div>
+                </form>
             </div>
 
-            <!-- Mes crédits -->
-            <div>
-                <div class="glass-card p-6 mb-6">
-                    <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
-                        <i class="fas fa-history mr-2 text-purple-600"></i>
+            <!-- My Credits -->
+            <div class="content-card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-history"></i>
                         Mes Demandes de Crédit
                     </h3>
+                </div>
 
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Montant</th>
-                                    <th>Statut</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (!empty($mes_credits)): ?>
-                                    <?php foreach ($mes_credits as $credit): ?>
-                                        <tr onclick="window.location.href='detail_credit.php?id=<?php echo $credit['id_credit']; ?>'" style="cursor: pointer;">
-                                            <td class="font-mono text-sm text-gray-500">#<?php echo $credit['id_credit']; ?></td>
-                                            <td class="montant-cell text-blue-600">
-                                                <?php echo number_format($credit['montant'], 0, ',', ' '); ?> F
-                                            </td>
-                                            <td>
-                                                <?php
-                                                $status_class = '';
-                                                $status_text = '';
-                                                switch ($credit['statut']) {
-                                                    case 'demande':
-                                                        $status_class = 'status-demande';
-                                                        $status_text = 'En attente';
-                                                        break;
-                                                    case 'en_cours':
-                                                        $status_class = 'status-en_cours';
-                                                        $status_text = 'En cours';
-                                                        break;
-                                                    case 'en_retard':
-                                                        $status_class = 'status-en_retard';
-                                                        $status_text = 'En retard';
-                                                        break;
-                                                    case 'rembourse':
-                                                        $status_class = 'status-rembourse';
-                                                        $status_text = 'Remboursé';
-                                                        break;
-                                                    case 'rejete':
-                                                        $status_class = 'status-rejete';
-                                                        $status_text = 'Rejeté';
-                                                        break;
-                                                    default:
-                                                        $status_class = 'status-demande';
-                                                        $status_text = $credit['statut'];
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Montant</th>
+                                <th>Type</th>
+                                <th>Date</th>
+                                <th>Statut</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (!empty($mes_credits)): ?>
+                                <?php foreach ($mes_credits as $credit): ?>
+                                    <tr onclick="window.location.href='detail_credit.php?id=<?php echo $credit['id_credit']; ?>'">
+                                        <td style="font-weight: 600;">#<?php echo $credit['id_credit']; ?></td>
+                                        <td style="font-weight: 700; color: var(--medium-blue);">
+                                            <?php echo number_format($credit['montant'], 0, ',', ' '); ?> FCFA
+                                        </td>
+                                        <td>
+                                            <?php
+                                            if (isset($credit['type_credit'])) {
+                                                switch ($credit['type_credit']) {
+                                                    case 'standard': echo 'Standard'; break;
+                                                    case 'urgent': echo 'Urgent'; break;
+                                                    case 'long_terme': echo 'Long Terme'; break;
+                                                    case 'projet': echo 'Projet'; break;
+                                                    default: echo ucfirst(str_replace('_', ' ', $credit['type_credit']));
                                                 }
-                                                ?>
-                                                <span class="status-badge <?php echo $status_class; ?>">
-                                                    <?php echo $status_text; ?>
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <tr>
-                                        <td colspan="3" class="text-center py-8">
-                                            <div class="text-gray-400">
-                                                <i class="fas fa-credit-card text-4xl mb-4 opacity-50"></i>
-                                                <p class="font-semibold">Aucun crédit</p>
-                                                <p class="text-sm mt-2">Aucune demande de crédit</p>
-                                            </div>
+                                            } else {
+                                                echo 'Standard';
+                                            }
+                                            ?>
+                                        </td>
+                                        <td>
+                                            <?php echo date('d/m/Y', strtotime($credit['date_emprunt'])); ?>
+                                        </td>
+                                        <td>
+                                            <?php
+                                            $status_class = '';
+                                            $status_text = '';
+                                            switch ($credit['statut']) {
+                                                case 'demande':
+                                                    $status_class = 'status-demande';
+                                                    $status_text = 'En attente';
+                                                    break;
+                                                case 'en_cours':
+                                                    $status_class = 'status-en_cours';
+                                                    $status_text = 'En cours';
+                                                    break;
+                                                case 'en_retard':
+                                                    $status_class = 'status-en_retard';
+                                                    $status_text = 'En retard';
+                                                    break;
+                                                case 'rembourse':
+                                                    $status_class = 'status-rembourse';
+                                                    $status_text = 'Remboursé';
+                                                    break;
+                                                case 'rejete':
+                                                    $status_class = 'status-rejete';
+                                                    $status_text = 'Rejeté';
+                                                    break;
+                                                default:
+                                                    $status_class = 'status-demande';
+                                                    $status_text = $credit['statut'];
+                                            }
+                                            ?>
+                                            <span class="status-badge <?php echo $status_class; ?>">
+                                                <?php echo $status_text; ?>
+                                            </span>
                                         </td>
                                     </tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <?php if (!empty($mes_credits)): ?>
-                        <div class="mt-6 p-4 bg-blue-50 rounded-lg">
-                            <h4 class="font-bold text-blue-800 mb-2 text-sm">📊 Récapitulatif</h4>
-                            <div class="space-y-2 text-sm">
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Total emprunté:</span>
-                                    <span class="font-bold text-blue-700"><?php echo number_format($total_emprunte, 0, ',', ' '); ?> FCFA</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Reste à payer:</span>
-                                    <span class="font-bold text-orange-600"><?php echo number_format($total_restant, 0, ',', ' '); ?> FCFA</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Crédits en cours:</span>
-                                    <span class="font-bold text-green-600"><?php echo $credits_en_cours; ?></span>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Informations importantes -->
-                <div class="glass-card p-6">
-                    <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                        <i class="fas fa-info-circle text-blue-600 mr-2"></i>
-                        Informations Importantes
-                    </h3>
-                    <div class="space-y-4">
-                        <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <h4 class="font-bold text-yellow-800 mb-2 text-sm">⚠️ Conditions d'éligibilité</h4>
-                            <ul class="text-xs text-yellow-700 space-y-1">
-                                <li><i class="fas fa-check-circle mr-1"></i> Être membre actif depuis 3 mois</li>
-                                <li><i class="fas fa-check-circle mr-1"></i> Avoir moins de 3 crédits en cours</li>
-                                <li><i class="fas fa-check-circle mr-1"></i> Solde total crédit ≤ 2,000,000 FCFA</li>
-                                <li><i class="fas fa-check-circle mr-1"></i> Avoir une cotisation à jour</li>
-                            </ul>
-                        </div>
-
-                        <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <h4 class="font-bold text-blue-800 mb-2 text-sm">💰 Taux d'Intérêt</h4>
-                            <div class="text-xs text-blue-700 space-y-1">
-                                <div class="flex justify-between">
-                                    <span>Crédit Standard:</span>
-                                    <span class="font-bold">5.0%</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span>Crédit Urgent:</span>
-                                    <span class="font-bold">6.5%</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span>Crédit Long Terme:</span>
-                                    <span class="font-bold">4.5%</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span>Crédit Projet:</span>
-                                    <span class="font-bold">4.0%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
-                            <h4 class="font-bold text-green-800 mb-2 text-sm">⚡ Délais de Traitement</h4>
-                            <p class="text-xs text-green-700">
-                                <i class="fas fa-clock mr-1"></i>
-                                Les demandes sont traitées sous 48h ouvrables. Vous serez notifié par SMS.
-                            </p>
-                        </div>
-                    </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="5" style="text-align: center; padding: 40px;">
+                                        <div style="color: var(--text-light);">
+                                            <i class="fas fa-credit-card" style="font-size: 3rem; opacity: 0.3; margin-bottom: 15px;"></i>
+                                            <p style="font-weight: 600;">Aucune demande de crédit</p>
+                                            <p style="font-size: 0.9rem;">Soumettez votre première demande</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
-        </div>
+
+            <!-- Information Cards -->
+            <div class="info-cards">
+                <div class="info-card">
+                    <h4 class="info-card-title">
+                        <i class="fas fa-check-circle"></i>
+                        Conditions d'éligibilité
+                    </h4>
+                    <ul class="info-card-list">
+                        <li><i class="fas fa-check"></i> Membre actif depuis 3 mois</li>
+                        <li><i class="fas fa-check"></i> Maximum 3 crédits en cours</li>
+                        <li><i class="fas fa-check"></i> Solde total ≤ 2,000,000 FCFA</li>
+                        <li><i class="fas fa-check"></i> Cotisation à jour</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4 class="info-card-title">
+                        <i class="fas fa-percentage"></i>
+                        Taux d'Intérêt
+                    </h4>
+                    <ul class="info-card-list">
+                        <li><i class="fas fa-money-bill-wave"></i> Standard: <strong>5.0%</strong></li>
+                        <li><i class="fas fa-bolt"></i> Urgent: <strong>6.5%</strong></li>
+                        <li><i class="fas fa-calendar-alt"></i> Long Terme: <strong>4.5%</strong></li>
+                        <li><i class="fas fa-project-diagram"></i> Projet: <strong>4.0%</strong></li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4 class="info-card-title">
+                        <i class="fas fa-clock"></i>
+                        Délais de Traitement
+                    </h4>
+                    <ul class="info-card-list">
+                        <li><i class="fas fa-hourglass-half"></i> Traitement sous 48h</li>
+                        <li><i class="fas fa-bell"></i> Notification par SMS</li>
+                        <li><i class="fas fa-file-contract"></i> Contrat à signer</li>
+                        <li><i class="fas fa-money-check-alt"></i> Délivrance rapide</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
     </div>
 
+    <!-- Mobile Navigation -->
+    <nav class="mobile-nav">
+        <div class="mobile-nav-container">
+            <a href="dashboard.php" class="mobile-nav-item">
+                <i class="fas fa-tachometer-alt mobile-nav-icon"></i>
+                <span class="mobile-nav-text">Dashboard</span>
+            </a>
+            <a href="cotisation.php" class="mobile-nav-item">
+                <i class="fas fa-money-bill-wave mobile-nav-icon"></i>
+                <span class="mobile-nav-text">Cotisations</span>
+            </a>
+            <a href="seances.php" class="mobile-nav-item">
+                <i class="fas fa-hand-holding-usd mobile-nav-icon"></i>
+                <span class="mobile-nav-text">Tontines</span>
+            </a>
+            <a href="demander_credit.php" class="mobile-nav-item active">
+                <i class="fas fa-credit-card mobile-nav-icon"></i>
+                <span class="mobile-nav-text">Crédit</span>
+            </a>
+            <a href="logout.php" class="mobile-nav-item">
+                <i class="fas fa-sign-out-alt mobile-nav-icon"></i>
+                <span class="mobile-nav-text">Sortir</span>
+            </a>
+        </div>
+    </nav>
+
     <script>
+        // Mettre à jour la date
+        function updateDateTime() {
+            const now = new Date();
+            const options = {
+                weekday: 'short',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            };
+            const dateStr = now.toLocaleDateString('fr-FR', options);
+            document.getElementById('currentDate').textContent = dateStr;
+        }
+
         // Sélection du type de crédit
         function selectCreditType(type) {
             const cards = document.querySelectorAll('.credit-type-card');
@@ -766,6 +1254,10 @@ foreach ($mes_credits as $credit) {
             const montant = parseFloat(document.getElementById('montant').value) || 0;
             const duree = parseInt(document.getElementById('duree_mois').value) || 12;
             const type = document.getElementById('type_credit').value;
+            
+            // Mettre à jour les valeurs affichées
+            document.getElementById('montantValue').textContent = formatMoney(montant) + ' FCFA';
+            document.getElementById('dureeValue').textContent = duree + ' mois';
             
             // Taux selon le type
             let taux = 5.0;
@@ -793,13 +1285,19 @@ foreach ($mes_credits as $credit) {
 
         // Initialisation
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialiser la date
+            updateDateTime();
+            setInterval(updateDateTime, 60000);
+            
             // Sélectionner le type standard par défaut
             selectCreditType('standard');
-            updateSimulation();
             
-            // Mettre à jour les sliders avec les valeurs des inputs
+            // Initialiser les sliders
             document.getElementById('montant_range').value = document.getElementById('montant').value || 500000;
             document.getElementById('duree_range').value = document.getElementById('duree_mois').value || 12;
+            
+            // Mettre à jour la simulation
+            updateSimulation();
             
             // Validation du formulaire
             document.getElementById('creditForm').addEventListener('submit', function(e) {
@@ -825,7 +1323,6 @@ foreach ($mes_credits as $credit) {
                     return false;
                 }
                 
-                // Afficher un message de confirmation
                 if (!confirm('Êtes-vous sûr de vouloir soumettre cette demande de crédit ?')) {
                     e.preventDefault();
                     return false;
@@ -833,35 +1330,6 @@ foreach ($mes_credits as $credit) {
                 
                 return true;
             });
-            
-            // Effet de survol sur les lignes du tableau
-            const tableRows = document.querySelectorAll('tbody tr');
-            tableRows.forEach(row => {
-                row.addEventListener('mouseenter', function() {
-                    this.style.transform = 'translateX(4px)';
-                    this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-                });
-                
-                row.addEventListener('mouseleave', function() {
-                    this.style.transform = 'translateX(0)';
-                    this.style.boxShadow = 'none';
-                });
-            });
-        });
-
-        // Gestion des plages de valeurs
-        document.getElementById('montant').addEventListener('input', function() {
-            const value = parseInt(this.value);
-            if (value < 10000) this.value = 10000;
-            if (value > 10000000) this.value = 10000000;
-            document.getElementById('montant_range').value = this.value;
-        });
-        
-        document.getElementById('duree_mois').addEventListener('input', function() {
-            const value = parseInt(this.value);
-            if (value < 3) this.value = 3;
-            if (value > 60) this.value = 60;
-            document.getElementById('duree_range').value = this.value;
         });
     </script>
 </body>

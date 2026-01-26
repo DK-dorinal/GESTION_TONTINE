@@ -316,7 +316,8 @@ $is_mobile = isMobile();
             gap: 10px;
         }
 
-        .logout-btn, .share-btn {
+        .logout-btn,
+        .share-btn {
             display: flex;
             align-items: center;
             gap: 12px;
@@ -855,6 +856,7 @@ $is_mobile = isMobile();
                 opacity: 0;
                 transform: translateY(-50px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -1065,6 +1067,7 @@ $is_mobile = isMobile();
                 opacity: 0;
                 transform: translateY(30px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -1076,125 +1079,126 @@ $is_mobile = isMobile();
         }
 
         /* ==================== RESPONSIVE DESIGN ==================== */
-        
+
         /* Tablets and below (1024px) */
         @media (max-width: 1024px) {
             .sidebar {
                 transform: translateX(-100%);
             }
-            
+
             .main-content {
                 margin-left: 0;
                 width: 100%;
                 padding-bottom: 80px;
             }
-            
+
             .mobile-nav {
                 display: block;
             }
-            
+
             .content-grid {
                 flex-direction: column;
             }
-            
+
             .sidebar-column {
                 max-width: 100%;
             }
         }
-        
+
         /* Medium Mobile (768px) */
         @media (max-width: 768px) {
             .main-content {
                 padding: 20px;
             }
-            
+
             .header-top {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 15px;
             }
-            
+
             .header-actions {
                 width: 100%;
                 justify-content: space-between;
             }
-            
+
             .quick-actions {
                 gap: 15px;
             }
-            
+
             .action-card {
                 min-width: calc(50% - 15px);
             }
-            
+
             .stats-grid {
                 gap: 15px;
             }
-            
+
             .stat-card {
                 min-width: calc(50% - 15px);
             }
-            
+
             .content-card {
                 padding: 20px;
             }
         }
-        
+
         /* Small Mobile (480px) */
         @media (max-width: 480px) {
             .main-content {
                 padding: 15px;
             }
-            
+
             .header-title h1 {
                 font-size: 1.5rem;
             }
-            
+
             .quick-actions {
                 gap: 10px;
             }
-            
+
             .action-card {
                 min-width: 100%;
             }
-            
+
             .stats-grid {
                 gap: 10px;
             }
-            
+
             .stat-card {
                 min-width: 100%;
                 padding: 20px;
             }
-            
+
             .stat-value {
                 font-size: 1.5rem;
             }
-            
+
             .mobile-nav-text {
                 font-size: 9px;
             }
-            
+
             .mobile-nav-icon {
                 font-size: 20px;
             }
         }
-        
+
         /* Very Small Mobile (360px) */
         @media (max-width: 360px) {
             .header-title h1 {
                 font-size: 1.3rem;
             }
-            
-            .date-badge, .role-badge {
+
+            .date-badge,
+            .role-badge {
                 font-size: 0.75rem;
                 padding: 8px 12px;
             }
-            
+
             .mobile-nav-text {
                 font-size: 8px;
             }
-            
+
             .mobile-nav-icon {
                 font-size: 18px;
             }
@@ -1205,58 +1209,62 @@ $is_mobile = isMobile();
 <body>
     <div class="app-container">
         <?php if ($is_admin): ?>
-        <!-- Desktop Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo">
-                    <div class="logo-icon">
-                        <i class="fas fa-hand-holding-usd"></i>
-                    </div>
-                    <div class="logo-text">
-                        <h2>Gestion Tontine</h2>
-                        <p>Version 1.0</p>
+            <!-- Desktop Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <div class="logo">
+                        <div class="logo-icon">
+                            <i class="fas fa-hand-holding-usd"></i>
+                        </div>
+                        <div class="logo-text">
+                            <h2>Gestion Tontine</h2>
+                            <p>Version 1.0</p>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <nav class="nav-menu">
-                <a href="dashboard.php" class="nav-item active">
-                    <i class="fas fa-tachometer-alt"></i>
-                    <span>Tableau de Bord</span>
-                </a>
-                <a href="membre.php" class="nav-item">
-                    <i class="fas fa-users"></i>
-                    <span>Membres</span>
-                </a>
-                <a href="tontine.php" class="nav-item">
-                    <i class="fas fa-hand-holding-usd"></i>
-                    <span>Tontines</span>
-                </a>
-                <a href="seance.php" class="nav-item">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Séances</span>
-                </a>
-                <a href="cotisation.php" class="nav-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Cotisations</span>
-                </a>
-                <a href="credit.php" class="nav-item">
-                    <i class="fas fa-credit-card"></i>
-                    <span>Crédits</span>
-                </a>
-            </nav>
+                <nav class="nav-menu">
+                    <a href="dashboard.php" class="nav-item active">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Tableau de Bord</span>
+                    </a>
+                    <a href="membre.php" class="nav-item">
+                        <i class="fas fa-users"></i>
+                        <span>Membres</span>
+                    </a>
+                    <a href="tontine.php" class="nav-item">
+                        <i class="fas fa-hand-holding-usd"></i>
+                        <span>Tontines</span>
+                    </a>
+                    <a href="seance.php" class="nav-item">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span>Séances</span>
+                    </a>
+                    <a href="cotisation.php" class="nav-item">
+                        <i class="fas fa-money-bill-wave"></i>
+                        <span>Cotisations</span>
+                    </a>
+                    <a href="credit.php" class="nav-item">
+                        <i class="fas fa-credit-card"></i>
+                        <span>Crédits</span>
+                    </a>
+                    <a href="projets_fiac.php" class="nav-item active">
+                        <i class="fas fa-project-diagram"></i>
+                        <span>Projets FIAC</span>
+                    </a>
+                </nav>
 
-            <div class="sidebar-footer">
-                <a href="#" class="share-btn" onclick="openShareModal()">
-                    <i class="fas fa-share-alt"></i>
-                    <span>Partager</span>
-                </a>
-                <a href="logout.php" class="logout-btn">
-                    <i class="fas fa-sign-out-alt"></i>
-                    <span>Déconnexion</span>
-                </a>
-            </div>
-        </aside>
+                <div class="sidebar-footer">
+                    <a href="#" class="share-btn" onclick="openShareModal()">
+                        <i class="fas fa-share-alt"></i>
+                        <span>Partager</span>
+                    </a>
+                    <a href="logout.php" class="logout-btn">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Déconnexion</span>
+                    </a>
+                </div>
+            </aside>
         <?php endif; ?>
 
         <!-- Main Content -->
@@ -1841,11 +1849,11 @@ $is_mobile = isMobile();
             const linkInput = document.getElementById('shareLink');
             linkInput.select();
             linkInput.setSelectionRange(0, 99999);
-            
+
             navigator.clipboard.writeText(linkInput.value).then(() => {
                 const successMessage = document.getElementById('copySuccess');
                 successMessage.style.display = 'flex';
-                
+
                 setTimeout(() => {
                     successMessage.style.display = 'none';
                 }, 3000);

@@ -7,6 +7,53 @@ error_reporting(E_ALL);
 // Inclure le fichier de configuration PDO
 require_once './fonctions/config.php';
 
+// Récupérer les informations de l'admin avec le numéro 699887766
+$admin_info = [];
+try {
+    // Utiliser PDO depuis config.php
+    global $pdo;
+    
+    // Chercher l'admin avec le numéro spécifique 699887766
+    $sql_admin = "SELECT nom, prenom, telephone, role FROM membre WHERE role = 'admin'";
+    $stmt_admin = $pdo->prepare($sql_admin);
+    $stmt_admin->execute();
+    $admin_info = $stmt_admin->fetch(PDO::FETCH_ASSOC);
+    
+    // Si non trouvé, chercher par ID 1 ou rôle admin
+    if (!$admin_info) {
+        $sql_admin = "SELECT nom, prenom, telephone, role FROM membre WHERE role = 'admin' LIMIT 1";
+        $stmt_admin = $pdo->prepare($sql_admin);
+        $stmt_admin->execute();
+        $admin_info = $stmt_admin->fetch(PDO::FETCH_ASSOC);
+    }
+} catch (PDOException $e) {
+    // Ne pas afficher l'erreur pour ne pas perturber l'utilisateur
+    $admin_info = [];
+}
+
+// // Préparer les données pour l'affichage
+// $admin_nom_complet = "Admin Principal";
+// $admin_telephone = "+237 699 887 766";
+
+if ($admin_info) {
+    $admin_nom_complet = htmlspecialchars($admin_info['nom'] . ' ' . $admin_info['prenom']);
+    $admin_telephone = htmlspecialchars($admin_info['telephone']);
+    
+    // Formater le numéro de téléphone pour l'affichage
+    $admin_telephone_formatted = preg_replace('/(\d{3})(\d{3})(\d{3})/', '$1 $2 $3', $admin_telephone);
+    if (strpos($admin_telephone_formatted, '+237') === false && strpos($admin_telephone, '237') === 0) {
+        $admin_telephone_formatted = '+237 ' . substr($admin_telephone_formatted, 3);
+    } elseif (strpos($admin_telephone_formatted, '+237') === false && strlen($admin_telephone_formatted) == 9) {
+        $admin_telephone_formatted = '+237 ' . $admin_telephone_formatted;
+    }
+}
+
+// Si l'admin avec le numéro spécifique n'est pas trouvé, afficher les infos de test
+if (!$admin_info) {
+    $admin_nom_complet = "Admin Test";
+    $admin_telephone_formatted = "+237 699 887 766";
+}
+
 // Rediriger si déjà connecté
 if (isset($_SESSION['user_id'])) {
     header('Location: dashboard.php');
@@ -86,14 +133,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $membre = $stmt->fetch();
 
             if ($membre) {
+                // Supprimer les espaces multiples et normaliser les espaces
+                $username = preg_replace('/\s+/', ' ', $username);
+                
+                // Créer différentes combinaisons possibles du nom
                 $nom_complet = $membre['nom'] . ' ' . $membre['prenom'];
                 $nom_simple = $membre['nom'];
-
+                $prenom_nom = $membre['prenom'] . ' ' . $membre['nom'];
+                
+                // Convertir en minuscules pour comparaison insensible à la casse
                 $usernameLower = strtolower($username);
                 $nom_complet_lower = strtolower($nom_complet);
                 $nom_simple_lower = strtolower($nom_simple);
-
-                if ($usernameLower === $nom_complet_lower || $usernameLower === $nom_simple_lower) {
+                $prenom_nom_lower = strtolower($prenom_nom);
+                
+                // Vérifier si le nom d'utilisateur correspond à l'une des combinaisons
+                // (insensible à la casse et avec gestion des espaces)
+                if ($usernameLower === $nom_complet_lower || 
+                    $usernameLower === $nom_simple_lower || 
+                    $usernameLower === $prenom_nom_lower) {
+                    
                     $_SESSION['user_id'] = $membre['id_membre'];
                     $_SESSION['username'] = $membre['nom'];
                     $_SESSION['role'] = $membre['role'];
@@ -108,7 +167,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Location: dashboard.php');
                     exit();
                 } else {
-                    $errors[] = "Identifiants incorrects";
+                    // Tentative supplémentaire : vérifier sans les espaces
+                    $usernameNoSpaces = str_replace(' ', '', $usernameLower);
+                    $nom_complet_no_spaces = str_replace(' ', '', $nom_complet_lower);
+                    $nom_simple_no_spaces = str_replace(' ', '', $nom_simple_lower);
+                    $prenom_nom_no_spaces = str_replace(' ', '', $prenom_nom_lower);
+                    
+                    if ($usernameNoSpaces === $nom_complet_no_spaces || 
+                        $usernameNoSpaces === $nom_simple_no_spaces || 
+                        $usernameNoSpaces === $prenom_nom_no_spaces) {
+                        
+                        $_SESSION['user_id'] = $membre['id_membre'];
+                        $_SESSION['username'] = $membre['nom'];
+                        $_SESSION['role'] = $membre['role'];
+                        $_SESSION['nom'] = $nom_complet;
+                        $_SESSION['telephone'] = $membre['telephone'];
+                        $_SESSION['prenom'] = $membre['prenom'];
+                        $_SESSION['adresse'] = $membre['adresse'];
+                        $_SESSION['login_time'] = time();
+                        $_SESSION['login_method'] = 'nom_telephone';
+                        $_SESSION['welcome_message'] = "Bienvenue " . $nom_complet . " !";
+
+                        header('Location: dashboard.php');
+                        exit();
+                    } else {
+                        $errors[] = "Identifiants incorrects";
+                    }
                 }
             } else {
                 $errors[] = "Numéro de téléphone non trouvé";
@@ -670,10 +754,269 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ::-webkit-scrollbar-thumb:hover {
             background: var(--accent-light);
         }
+
+        /* Floating Admin Info */
+        .floating-admin {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            transition: var(--transition);
+        }
+
+        .admin-toggle {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-light) 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(212, 175, 55, 0.4);
+            border: 3px solid var(--pure-white);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .admin-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 12px 30px rgba(212, 175, 55, 0.6);
+        }
+
+        .admin-toggle i {
+            color: var(--pure-white);
+            font-size: 24px;
+            transition: var(--transition);
+        }
+
+        .admin-toggle:hover i {
+            transform: rotate(15deg);
+        }
+
+        .admin-toggle::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(255,255,255,0.3) 1%, transparent 1%);
+            transform: translate(-50%, -50%) scale(0);
+            opacity: 0;
+            transition: transform 0.5s, opacity 0.5s;
+        }
+
+        .admin-toggle:active::before {
+            transform: translate(-50%, -50%) scale(10);
+            opacity: 0.3;
+            transition: 0s;
+        }
+
+        .admin-info-panel {
+            position: absolute;
+            bottom: 70px;
+            right: 0;
+            width: 320px;
+            background: var(--pure-white);
+            border-radius: var(--border-radius);
+            box-shadow: 0 20px 40px var(--shadow-medium),
+                        0 0 0 1px rgba(15, 26, 58, 0.1);
+            padding: 0;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(20px);
+            transition: var(--transition);
+            overflow: hidden;
+        }
+
+        @media (max-width : 1024px) {
+            .admin-info-panel{
+                width: 290px
+            }
+        }
+        .floating-admin:hover .admin-info-panel {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .admin-header {
+            background: linear-gradient(135deg, var(--navy-blue) 0%, var(--dark-blue) 100%);
+            padding: 25px;
+            color: var(--pure-white);
+            text-align: center;
+            position: relative;
+        }
+
+        .admin-header::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-top: 10px solid var(--navy-blue);
+        }
+
+        .admin-avatar {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-light) 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            font-size: 32px;
+            color: var(--pure-white);
+        }
+
+        .admin-title {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .admin-name {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .admin-role {
+            display: inline-block;
+            background: rgba(212, 175, 55, 0.2);
+            color: var(--accent-gold);
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+        }
+
+        .admin-details {
+            padding: 25px;
+        }
+
+        .admin-info-group {
+            margin-bottom: 20px;
+        }
+
+        .admin-info-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .admin-label {
+            font-size: 12px;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+
+        .admin-label i {
+            color: var(--accent-gold);
+            font-size: 11px;
+        }
+
+        .admin-value {
+            font-size: 15px;
+            color: var(--navy-blue);
+            font-weight: 500;
+            padding: 10px 15px;
+            background: var(--bg-light);
+            border-radius: 8px;
+            border: 1px solid rgba(15, 26, 58, 0.1);
+            word-break: break-all;
+        }
+
+        .admin-note {
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(230, 195, 77, 0.1) 100%);
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: var(--text-dark);
+            line-height: 1.5;
+            position: relative;
+        }
+
+        .admin-note::before {
+            content: '💡';
+            position: absolute;
+            top: -10px;
+            left: 15px;
+            background: var(--pure-white);
+            padding: 0 5px;
+            font-size: 14px;
+        }
     </style>
 </head>
 
 <body>
+    <!-- Floating Admin Info -->
+    <div class="floating-admin">
+        <div class="admin-toggle">
+            <i class="fas fa-user-shield"></i>
+        </div>
+        <div class="admin-info-panel">
+            <div class="admin-header">
+                <div class="admin-avatar">
+                    <i class="fas fa-crown"></i>
+                </div>
+                <div class="admin-title">Super Administrateur</div>
+                <div class="admin-name"><?php echo $admin_nom_complet; ?></div>
+                <div class="admin-role">SUPER ADMIN</div>
+            </div>
+            <div class="admin-details">
+                <div class="admin-info-group">
+                    <div class="admin-label">
+                        <i class="fas fa-id-card"></i>
+                        ID ADMIN
+                    </div>
+                    <div class="admin-value"><?php echo $admin_nom_complet ?></div>
+                </div>
+                
+                <div class="admin-info-group">
+                    <div class="admin-label">
+                        <i class="fas fa-phone-alt"></i>
+                        TÉLÉPHONE
+                    </div>
+                    <div class="admin-value">
+                        <?php 
+                        if (isset($admin_telephone_formatted)) {
+                            echo $admin_telephone_formatted;
+                        }
+                        ?>
+                    </div>
+                </div>
+                
+                <div class="admin-info-group">
+                    <div class="admin-label">
+                        <i class="fas fa-key"></i>
+                        ID MEMBRE
+                    </div>
+                </div>
+                
+                <div class="admin-note">
+                    Compte de test pour l'application. Numéro: 699887766
+                </div>
+            </div>
+        </div>
+    </div>
     <!-- Left Section - Login -->
     <div class="login-section">
         <div class="login-container">
@@ -737,14 +1080,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             name="telephone"
                             id="telephone"
                             class="form-input"
-                            placeholder="Ex: 698179835"
+                            placeholder="Ex: 699887766"
                             value="<?php echo htmlspecialchars($telephone ?? ''); ?>"
                             required
                             autocomplete="tel">
                     </div>
                     <div class="input-hint">
                         <i class="fas fa-info-circle"></i>
-                        Formats acceptés: 9 chiffres (6xxxxxxxx) ou 8 chiffres (67xxxxxx, 65xxxxxx, 69xxxxxx)
+                        Numéro de test: 699887766
                     </div>
                 </div>
 
@@ -812,15 +1155,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script>
         $(document).ready(function() {
-            // Auto-format téléphone
-            $('#telephone').on('input', function() {
-                let value = $(this).val().replace(/\D/g, '');
-                if (value.length > 0 && value.length <= 9) {
-                    value = value.replace(/(\d{3})(?=\d)/g, '$1 ');
-                }
-                $(this).val(value.trim());
-            });
-
             // Animation au focus
             $('.form-input').on('focus', function() {
                 $(this).parent().css('transform', 'translateY(-2px)');
@@ -862,6 +1196,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'border-color': 'rgba(26, 43, 85, 0.1)',
                     'box-shadow': 'none'
                 });
+            });
+
+            // Admin info panel hover effects
+            $('.floating-admin').hover(
+                function() {
+                    $(this).find('.admin-info-panel').css({
+                        'opacity': '1',
+                        'visibility': 'visible',
+                        'transform': 'translateY(0)'
+                    });
+                    $(this).find('.admin-toggle').css('transform', 'scale(1.1)');
+                },
+                function() {
+                    $(this).find('.admin-info-panel').css({
+                        'opacity': '0',
+                        'visibility': 'hidden',
+                        'transform': 'translateY(20px)'
+                    });
+                    $(this).find('.admin-toggle').css('transform', 'scale(1)');
+                }
+            );
+
+            // Click to toggle (mobile friendly)
+            $('.admin-toggle').on('click', function(e) {
+                e.stopPropagation();
+                const panel = $(this).siblings('.admin-info-panel');
+                const isVisible = panel.css('opacity') === '1';
+                
+                if (isVisible) {
+                    panel.css({
+                        'opacity': '0',
+                        'visibility': 'hidden',
+                        'transform': 'translateY(20px)'
+                    });
+                } else {
+                    panel.css({
+                        'opacity': '1',
+                        'visibility': 'visible',
+                        'transform': 'translateY(0)'
+                    });
+                }
+            });
+
+            // Close panel when clicking outside
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('.floating-admin').length) {
+                    $('.admin-info-panel').css({
+                        'opacity': '0',
+                        'visibility': 'hidden',
+                        'transform': 'translateY(20px)'
+                    });
+                }
             });
         });
     </script>
