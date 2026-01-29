@@ -13,8 +13,39 @@ function sanitizeInput($data) {
     return htmlspecialchars(stripslashes(trim($data)), ENT_QUOTES, 'UTF-8');
 }
 
+// Fonction pour normaliser le numéro de téléphone au format international
+function normalizePhoneNumber($phone) {
+    // Supprimer tous les caractères non numériques
+    $phone = preg_replace('/[^0-9]/', '', $phone);
+    
+    // Si le numéro commence par 0, on le remplace par +237
+    if (strlen($phone) == 9 && substr($phone, 0, 1) == '0') {
+        $phone = '237' . substr($phone, 1);
+    }
+    
+    // Si le numéro a 9 chiffres et commence par 6, 7 ou 8 (Cameroun), ajouter 237
+    if (strlen($phone) == 9 && in_array(substr($phone, 0, 1), ['6', '7', '8'])) {
+        $phone = '237' . $phone;
+    }
+    
+    // Si le numéro a déjà l'indicatif 237, ajouter le +
+    if (substr($phone, 0, 3) == '237') {
+        $phone = '+' . $phone;
+    }
+    
+    // Si après traitement, le numéro n'a pas le bon format, on le retourne tel quel
+    // (la validation se fera ensuite)
+    return $phone;
+}
+
+// Fonction de validation du numéro de téléphone
 function validatePhone($phone) {
-    return preg_match('/^[0-9\s\-\+\(\)]{8,20}$/', $phone);
+    // Normaliser d'abord
+    $phone = normalizePhoneNumber($phone);
+    
+    // Valider le format international Cameroun: +237 suivi de 9 chiffres
+    // Les opérateurs camerounais: 6 (MTN), 7 (Orange), 8 (Camtel, Nexttel)
+    return preg_match('/^\+237[6-8][0-9]{8}$/', $phone);
 }
 
 // Initialisation des variables
@@ -28,179 +59,27 @@ $form_data = [
     'adresse' => ''
 ];
 
-// --- TRAITEMENT DE L'EXPORT PDF avec TCPDF ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['export_pdf'])) {
-    try {
-        // Vérification rapide s'il y a des données
-        $stmt = $pdo->query("SELECT COUNT(*) as total FROM membre");
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($result['total'] == 0) {
-            $_SESSION['flash_message'] = "Aucun membre à exporter.";
-            $_SESSION['flash_type'] = "warning";
-            header("Location: " . $_SERVER['PHP_SELF']);
-            exit();
-        }
-
-        // Inclusion de TCPDF
-        require_once('tcpdf/tcpdf.php');
-        
-        // Création d'une nouvelle instance de TCPDF
-        $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
-        
-        // Définir les informations du document
-        $pdf->SetCreator('Système de Gestion de Tontine');
-        $pdf->SetAuthor('Administrateur Tontine');
-        $pdf->SetTitle('Liste des Membres');
-        
-        // Supprimer l'en-tête et le pied de page par défaut
-        $pdf->setPrintHeader(false);
-        $pdf->setPrintFooter(false);
-        
-        // Définir les marges
-        $pdf->SetMargins(10, 10, 10);
-        
-        // Ajouter une page
-        $pdf->AddPage();
-        
-        // Style CSS pour le PDF
-        $style = "
-            <style>
-                h1 { color: #0f1a3a; text-align: center; font-size: 20px; }
-                h2 { color: #2d4a8a; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
-                .header { text-align: center; margin-bottom: 20px; }
-                .subtitle { color: #666; text-align: center; font-size: 12px; }
-                .stats { background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
-                .stat-item { display: inline-block; margin-right: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                th { background-color: #2d4a8a; color: white; padding: 8px; text-align: left; font-size: 11px; }
-                td { padding: 8px; border-bottom: 1px solid #ddd; font-size: 10px; }
-                .active { color: #28a745; font-weight: bold; }
-                .inactive { color: #dc3545; font-weight: bold; }
-                .footer { text-align: center; margin-top: 30px; color: #666; font-size: 10px; }
-            </style>
-        ";
-        
-        // Récupération des données des membres
-        $stmt = $pdo->query("SELECT * FROM membre ORDER BY nom, prenom");
-        $membres_pdf = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Calcul des statistiques
-        $total = count($membres_pdf);
-        $actifs = 0;
-        $inactifs = 0;
-        foreach ($membres_pdf as $m) {
-            if (($m['statut'] ?? '') === 'actif') {
-                $actifs++;
-            } else {
-                $inactifs++;
-            }
-        }
-        $taux_activite = $total > 0 ? round(($actifs / $total) * 100, 1) : 0;
-        
-        // Contenu HTML du PDF
-        $html = $style . '
-        <div class="header">
-            <h1>TONTINEPRO - Liste des Membres</h1>
-            <div class="subtitle">
-                Système de Gestion de Tontine<br>
-                Date d\'export : ' . date('d/m/Y à H:i') . '<br>
-                Généré par : ' . ($_SESSION['nom'] ?? 'Administrateur') . '
-            </div>
-        </div>
-        
-        <div class="stats">
-            <h2>Statistiques</h2>
-            <div class="stat-item"><strong>Total Membres:</strong> ' . $total . '</div>
-            <div class="stat-item"><strong>Actifs:</strong> ' . $actifs . ' (' . $taux_activite . '%)</div>
-            <div class="stat-item"><strong>Inactifs:</strong> ' . $inactifs . '</div>
-        </div>
-        
-        <h2>Liste détaillée des membres</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th width="5%">N°</th>
-                    <th width="25%">Nom & Prénom</th>
-                    <th width="15%">Téléphone</th>
-                    <th width="30%">Adresse</th>
-                    <th width="15%">Inscription</th>
-                    <th width="10%">Statut</th>
-                </tr>
-            </thead>
-            <tbody>';
-        
-        $counter = 1;
-        foreach ($membres_pdf as $m) {
-            $nom_complet = htmlspecialchars($m['nom'] . ' ' . $m['prenom']);
-            $telephone = htmlspecialchars($m['telephone'] ?? '');
-            $adresse = htmlspecialchars($m['adresse'] ?? '');
-            $date_inscription = date('d/m/Y', strtotime($m['date_inscription']));
-            $statut = strtoupper($m['statut'] ?? 'inconnu');
-            $statut_class = ($m['statut'] === 'actif') ? 'active' : 'inactive';
-            
-            $html .= '
-                <tr>
-                    <td>' . $counter . '</td>
-                    <td>' . $nom_complet . '</td>
-                    <td>' . $telephone . '</td>
-                    <td>' . $adresse . '</td>
-                    <td>' . $date_inscription . '</td>
-                    <td class="' . $statut_class . '">' . $statut . '</td>
-                </tr>';
-            
-            $counter++;
-        }
-        
-        $html .= '
-            </tbody>
-        </table>
-        
-        <div class="footer">
-            Document généré le ' . date('d/m/Y H:i:s') . ' - © ' . date('Y') . ' TontinePro
-        </div>';
-        
-        // Écrire le contenu HTML dans le PDF
-        $pdf->writeHTML($html, true, false, true, false, '');
-        
-        // Sortie du PDF
-        $filename = 'membres_tontine_' . date('Ymd_His') . '.pdf';
-        
-        // Nettoyage du buffer de sortie
-        while (ob_get_level()) {
-            ob_end_clean();
-        }
-        
-        // Téléchargement du PDF
-        $pdf->Output($filename, 'D');
-        exit();
-
-    } catch (Exception $e) {
-        $_SESSION['flash_message'] = "Erreur lors de la génération du PDF : " . $e->getMessage();
-        $_SESSION['flash_type'] = "error";
-        header("Location: " . $_SERVER['PHP_SELF']);
-        exit();
-    }
-}
-
 // --- TRAITEMENT DU FORMULAIRE D'AJOUT ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nom'])) {
     $form_data['nom'] = sanitizeInput($_POST['nom'] ?? '');
     $form_data['prenom'] = sanitizeInput($_POST['prenom'] ?? '');
-    $form_data['telephone'] = sanitizeInput($_POST['telephone'] ?? '');
+    $raw_phone = sanitizeInput($_POST['telephone'] ?? '');
     $form_data['adresse'] = sanitizeInput($_POST['adresse'] ?? '');
     $date_inscription = date('Y-m-d');
     $statut = 'actif';
 
+    // Normaliser le numéro de téléphone
+    $form_data['telephone'] = normalizePhoneNumber($raw_phone);
+    
     $errors = [];
 
     if (empty($form_data['nom'])) $errors[] = "Le nom est obligatoire";
     if (empty($form_data['prenom'])) $errors[] = "Le prénom est obligatoire";
 
-    if (empty($form_data['telephone'])) {
+    if (empty($raw_phone)) {
         $errors[] = "Le téléphone est obligatoire";
-    } elseif (!validatePhone($form_data['telephone'])) {
-        $errors[] = "Le numéro de téléphone n'est pas valide";
+    } elseif (!validatePhone($raw_phone)) {
+        $errors[] = "Le numéro de téléphone n'est pas valide. Format attendu: 6XX XXX XXX, 0XX XXX XXX, +237 6XX XXX XXX ou 237 6XX XXX XXX";
     }
 
     if (empty($form_data['adresse'])) {
@@ -209,31 +88,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nom'])) {
 
     if (empty($errors)) {
         try {
-            $sql = "INSERT INTO membre (nom, prenom, telephone, adresse, date_inscription, statut) 
-                    VALUES (?, ?, ?, ?, ?, ?)";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([
-                $form_data['nom'], 
-                $form_data['prenom'], 
-                $form_data['telephone'], 
-                $form_data['adresse'], 
-                $date_inscription, 
-                $statut
-            ]);
-
-            $_SESSION['flash_message'] = "Membre enregistré avec succès!";
-            $_SESSION['flash_type'] = "success";
-
-            $form_data = [
-                'nom' => '',
-                'prenom' => '',
-                'telephone' => '',
-                'adresse' => ''
-            ];
+            // Vérifier si le numéro existe déjà
+            $checkStmt = $pdo->prepare("SELECT id_membre FROM membre WHERE telephone = ?");
+            $checkStmt->execute([$form_data['telephone']]);
             
-            header("Location: " . $_SERVER['PHP_SELF']);
-            exit();
+            if ($checkStmt->rowCount() > 0) {
+                $errors[] = "Ce numéro de téléphone est déjà enregistré";
+                $message = implode("<br>", $errors);
+                $message_type = "error";
+            } else {
+                $sql = "INSERT INTO membre (nom, prenom, telephone, adresse, date_inscription, statut) 
+                        VALUES (?, ?, ?, ?, ?, ?)";
+
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    $form_data['nom'], 
+                    $form_data['prenom'], 
+                    $form_data['telephone'], 
+                    $form_data['adresse'], 
+                    $date_inscription, 
+                    $statut
+                ]);
+
+                $_SESSION['flash_message'] = "Membre enregistré avec succès!";
+                $_SESSION['flash_type'] = "success";
+
+                $form_data = [
+                    'nom' => '',
+                    'prenom' => '',
+                    'telephone' => '',
+                    'adresse' => ''
+                ];
+                
+                header("Location: " . $_SERVER['PHP_SELF']);
+                exit();
+            }
             
         } catch (PDOException $e) {
             $message = "Erreur lors de l'enregistrement: " . $e->getMessage();
@@ -255,7 +144,7 @@ if (isset($_SESSION['flash_message'])) {
 
 // --- RÉCUPÉRATION DES MEMBRES ---
 try {
-    $stmt = $pdo->query("SELECT * FROM membre ORDER BY date_inscription DESC");
+    $stmt = $pdo->query("SELECT * FROM membre ORDER BY id_membre DESC");
     $membres = $stmt->fetchAll();
 } catch (PDOException $e) {
     $membres = [];
@@ -273,6 +162,7 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
 ?>
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -333,7 +223,7 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: 
+            background:
                 radial-gradient(circle at 20% 50%, rgba(212, 175, 55, 0.15) 0%, transparent 50%),
                 radial-gradient(circle at 80% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
             pointer-events: none;
@@ -940,8 +830,13 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         @keyframes slideIn {
@@ -949,6 +844,7 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
                 opacity: 0;
                 transform: translateX(-20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateX(0);
@@ -960,6 +856,7 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
                 opacity: 0;
                 transform: translateY(30px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -1016,7 +913,7 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
             .quick-actions {
                 justify-content: center;
             }
-            
+
             .back-to-dashboard {
                 text-align: center;
             }
@@ -1051,24 +948,26 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
         }
 
         @media print {
+
             .main-header,
             .btn-group,
             .quick-actions,
             .back-to-dashboard {
                 display: none;
             }
-            
+
             .card {
                 box-shadow: none;
                 border: 1px solid #ddd;
             }
-            
+
             .members-table {
                 min-width: auto;
             }
         }
     </style>
 </head>
+
 <body>
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
@@ -1089,7 +988,7 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
                     <p>Administration et inscription des membres</p>
                 </div>
             </div>
-            
+
             <div class="user-info">
                 <div class="user-avatar">
                     <?php echo isset($_SESSION['nom']) ? strtoupper(substr($_SESSION['nom'], 0, 1)) : 'A'; ?>
@@ -1118,11 +1017,11 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
                     <i class="fas fa-file-pdf"></i> Exporter en PDF
                 </button>
             </form>
-            
+
             <button class="action-btn print" onclick="window.print()">
                 <i class="fas fa-print"></i> Imprimer
             </button>
-            
+
             <button class="action-btn stats" id="showStatsBtn">
                 <i class="fas fa-chart-bar"></i> Voir Statistiques
             </button>
@@ -1289,11 +1188,11 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
                                     <i class="fas fa-user-check"></i>
                                 </div>
                                 <div class="stat-number">
-                                    <?php 
-                                    $actifs = array_filter($membres, function ($m) { 
-                                        return isset($m['statut']) && $m['statut'] === 'actif'; 
+                                    <?php
+                                    $actifs = array_filter($membres, function ($m) {
+                                        return isset($m['statut']) && $m['statut'] === 'actif';
                                     });
-                                    echo count($actifs); 
+                                    echo count($actifs);
                                     ?>
                                 </div>
                                 <div class="stat-label">Actifs</div>
@@ -1344,7 +1243,7 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
                     // Afficher l'indicateur de chargement
                     $('#loadingOverlay').fadeIn();
                     $('#exportPdfBtn').prop('disabled', true).css('opacity', '0.7');
-                    
+
                     // Désactiver l'indicateur après 30 secondes (en cas de problème)
                     setTimeout(function() {
                         $('#loadingOverlay').fadeOut();
@@ -1362,9 +1261,9 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
             $('#memberForm').on('submit', function(e) {
                 let isValid = true;
                 const inputs = $(this).find('input[required], textarea[required]');
-                
+
                 inputs.css('border-color', 'rgba(45, 74, 138, 0.2)');
-                
+
                 inputs.each(function() {
                     if (!$(this).val().trim()) {
                         isValid = false;
@@ -1406,12 +1305,12 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
             $('#showStatsBtn').on('click', function() {
                 <?php
                 $total = count($membres);
-                $actifs = array_filter($membres, function($m) { 
-                    return isset($m['statut']) && $m['statut'] === 'actif'; 
+                $actifs = array_filter($membres, function ($m) {
+                    return isset($m['statut']) && $m['statut'] === 'actif';
                 });
                 $inactifs = $total - count($actifs);
                 ?>
-                
+
                 Swal.fire({
                     title: '📊 Statistiques des Membres',
                     html: `
@@ -1431,15 +1330,15 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
                                 <div style="margin: 16px 0;">
                                     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                                         <div style="flex: 1; height: 12px; background: #e2e8f0; border-radius: 6px; overflow: hidden;">
-                                            <div style="height: 100%; width: <?php echo $total > 0 ? (count($actifs)/$total)*100 : 0; ?>%; background: linear-gradient(90deg, #28a745, #20c997);"></div>
+                                            <div style="height: 100%; width: <?php echo $total > 0 ? (count($actifs) / $total) * 100 : 0; ?>%; background: linear-gradient(90deg, #28a745, #20c997);"></div>
                                         </div>
-                                        <span style="font-size: 1rem; color: #28a745; font-weight: 700;"><?php echo $total > 0 ? round((count($actifs)/$total)*100) : 0; ?>% Actifs</span>
+                                        <span style="font-size: 1rem; color: #28a745; font-weight: 700;"><?php echo $total > 0 ? round((count($actifs) / $total) * 100) : 0; ?>% Actifs</span>
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 12px;">
                                         <div style="flex: 1; height: 12px; background: #e2e8f0; border-radius: 6px; overflow: hidden;">
-                                            <div style="height: 100%; width: <?php echo $total > 0 ? ($inactifs/$total)*100 : 0; ?>%; background: linear-gradient(90deg, #dc3545, #e74c3c);"></div>
+                                            <div style="height: 100%; width: <?php echo $total > 0 ? ($inactifs / $total) * 100 : 0; ?>%; background: linear-gradient(90deg, #dc3545, #e74c3c);"></div>
                                         </div>
-                                        <span style="font-size: 1rem; color: #dc3545; font-weight: 700;"><?php echo $total > 0 ? round(($inactifs/$total)*100) : 0; ?>% Inactifs</span>
+                                        <span style="font-size: 1rem; color: #dc3545; font-weight: 700;"><?php echo $total > 0 ? round(($inactifs / $total) * 100) : 0; ?>% Inactifs</span>
                                     </div>
                                 </div>
                             </div>
@@ -1454,20 +1353,48 @@ $pourcentageActifs = $total > 0 ? round((count($actifs) / $total) * 100) : 0;
             });
 
             // Auto-format pour le téléphone
+            // Auto-format pour le téléphone (format camerounais amélioré)
             $('#telephone').on('input', function(e) {
                 let value = $(this).val().replace(/\D/g, '');
-                if (value.length > 2) {
+
+                if (value.length > 0) {
+                    // Si le numéro commence par 237 (indicatif Cameroun)
                     if (value.startsWith('237')) {
+                        // On garde +237 puis on formate le reste
                         value = '+237 ' + value.substring(3);
-                    } else if (value.startsWith('6')) {
+                        // Ajouter un espace tous les 2 chiffres après +237
+                        if (value.length > 7) { // Après "+237 "
+                            let rest = value.substring(6); // Tout après "+237 "
+                            rest = rest.match(/.{1,2}/g).join(' ');
+                            value = value.substring(0, 6) + rest;
+                        }
+                    }
+                    // Si le numéro commence par 6 (mobile Cameroun sans indicatif)
+                    else if (value.startsWith('6')) {
+                        // On ajoute +237 et on formate
                         value = '+237 ' + value;
+                        // Ajouter un espace tous les 2 chiffres
+                        let rest = value.substring(6); // Tout après "+237 "
+                        rest = rest.match(/.{1,2}/g).join(' ');
+                        value = value.substring(0, 6) + rest;
+                    }
+                    // Pour les autres formats internationaux
+                    else if (value.length > 3) {
+                        // Formater par groupes de 2 ou 3 chiffres
+                        if (value.length <= 10) {
+                            value = value.match(/.{1,2}/g).join(' ');
+                        } else {
+                            value = value.match(/.{1,3}/g).join(' ');
+                        }
                     }
                 }
+
                 $(this).val(value);
             });
         });
     </script>
 </body>
+
 </html>
 <?php
 if (isset($pdo)) {

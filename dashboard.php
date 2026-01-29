@@ -22,7 +22,7 @@ if (!$user) {
 }
 
 // Vérifier l'inactivité (10 minutes)
-$timeout = 12000;
+$timeout = 1200;
 if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $timeout)) {
     session_unset();
     session_destroy();

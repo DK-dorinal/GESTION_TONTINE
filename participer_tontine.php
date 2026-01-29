@@ -23,9 +23,24 @@ function sanitizeInput($data)
 function getStatutTontine($date_debut, $date_fin)
 {
     $now = time();
-    $debut = strtotime($date_debut);
-    $fin = strtotime($date_fin);
 
+    // Vérifie si $date_debut est défini
+    $debut = $date_debut ? strtotime($date_debut) : false;
+
+    // Vérifie si $date_fin est défini
+    $fin = $date_fin ? strtotime($date_fin) : false;
+
+    // Si la date de début est invalide, on ne peut pas continuer
+    if (!$debut) {
+        return 'Date de début invalide';
+    }
+
+    // Si $fin n'est pas défini, considère que la tontine est ouverte après le début
+    if (!$fin) {
+        return ($now < $debut) ? 'Prochaine' : 'En cours';
+    }
+
+    // Logique normale
     if ($now < $debut) {
         return 'Prochaine';
     } elseif ($now >= $debut && $now <= $fin) {
@@ -34,6 +49,7 @@ function getStatutTontine($date_debut, $date_fin)
         return 'Terminée';
     }
 }
+
 
 // Récupérer les informations de l'utilisateur
 $stmt = $pdo->prepare("SELECT * FROM membre WHERE id_membre = ?");
@@ -1024,9 +1040,18 @@ foreach ($mes_tontines as $tontine) {
                                         <span>Fin: <?php echo date('d/m/Y', strtotime($tontine['date_fin'])); ?></span>
                                     </div>
                                     <div class="tontine-detail">
-                                        <i class="fas fa-users"></i>
-                                        <span>Participants: <?php echo $tontine['nombre_participants']; ?><?php echo $tontine['participants_max'] > 0 ? '/' . $tontine['participants_max'] : ''; ?></span>
+                                        <i class="fas fa-calendar-check"></i>
+                                        <span>Fin:
+                                            <?php
+                                            if (!empty($tontine['date_fin'])) {
+                                                echo date('d/m/Y', strtotime($tontine['date_fin']));
+                                            } else {
+                                                echo 'Non définie';
+                                            }
+                                            ?>
+                                        </span>
                                     </div>
+
                                 </div>
 
                                 <div class="btn-group" style="margin-top: 15px;">
@@ -1103,7 +1128,6 @@ foreach ($mes_tontines as $tontine) {
             // Confirmation avant participation
             $('form').on('submit', function(e) {
                 if ($(this).find('button[name="participer_tontine"]').length > 0) {
-                    e.preventDefault();
                     const form = this;
 
                     Swal.fire({
