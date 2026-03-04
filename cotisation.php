@@ -29,46 +29,99 @@ if (!$user) {
 // Déterminer le rôle
 $is_admin = ($user['role'] === 'admin');
 
-// Traitement du formulaire de paiement
+// Traitement du formulaire de paiement - LOGIQUE AMÉLIORÉE
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['payer_cotisation'])) {
-    $id_seance = $_POST['id_seance'];
-    $montant = $_POST['montant'];
-    $penalite = $_POST['penalite'];
+    $id_seance = intval($_POST['id_seance']);
+    $montant = floatval($_POST['montant']);
+    $penalite = floatval($_POST['penalite']);
     
-    try {
-        $pdo->beginTransaction();
-        
-        // Insertion de la cotisation
-        $stmt_insert = $pdo->prepare("
-            INSERT INTO cotisation (id_membre, id_seance, montant, date_paiement, statut) 
-            VALUES (?, ?, ?, CURDATE(), 'payé')
-        ");
-        $stmt_insert->execute([$user_id, $id_seance, $montant]);
-        $id_cotisation = $pdo->lastInsertId();
-        
-        // Si pénalité, l'insérer
-        if ($penalite > 0) {
-            $stmt_penalite = $pdo->prepare("
-                INSERT INTO penalite (id_membre, montant, raison, date_penalite, statut_paiement, id_cotisation_penalite) 
-                VALUES (?, ?, 'Retard de paiement cotisation', CURDATE(), 'impayé', ?)
+    // Vérifier que l'utilisateur a le droit de payer cette séance
+    $stmt_check_seance = $pdo->prepare("
+        SELECT s.*, t.montant_cotisation 
+        FROM seance s
+        INNER JOIN tontine t ON s.id_tontine = t.id_tontine
+        WHERE s.id_seance = ? 
+        AND t.id_tontine IN (
+            SELECT id_tontine FROM participation_tontine 
+            WHERE id_membre = ? AND statut = 'active'
+        )
+    ");
+    $stmt_check_seance->execute([$id_seance, $user_id]);
+    
+    if ($seance_data = $stmt_check_seance->fetch()) {
+        try {
+            $pdo->beginTransaction();
+            
+            // Vérifier si une cotisation existe déjà
+            $stmt_check_cotisation = $pdo->prepare("
+                SELECT id_cotisation FROM cotisation 
+                WHERE id_membre = ? AND id_seance = ?
             ");
-            $stmt_penalite->execute([$user_id, $penalite, $id_cotisation]);
+            $stmt_check_cotisation->execute([$user_id, $id_seance]);
+            
+            if ($stmt_check_cotisation->fetch()) {
+                $_SESSION['message_error'] = "Une cotisation existe déjà pour cette séance.";
+            } else {
+                // Insertion de la cotisation
+                $stmt_insert = $pdo->prepare("
+                    INSERT INTO cotisation (id_membre, id_seance, montant, date_paiement, statut) 
+                    VALUES (?, ?, ?, NOW(), 'payé')
+                ");
+                $stmt_insert->execute([$user_id, $id_seance, $montant]);
+                $id_cotisation = $pdo->lastInsertId();
+                
+                // Si pénalité, l'insérer
+                if ($penalite > 0) {
+                    $stmt_penalite = $pdo->prepare("
+                        INSERT INTO penalite (id_membre, montant, raison, date_penalite, statut_paiement, id_cotisation_penalite) 
+                        VALUES (?, ?, 'Retard de paiement cotisation', NOW(), 'payé', ?)
+                    ");
+                    $stmt_penalite->execute([$user_id, $penalite, $id_cotisation]);
+                }
+                
+                $pdo->commit();
+                
+                // Enregistrer le message de succès dans la session
+                $total_a_payer = $montant + $penalite;
+                $_SESSION['message_success'] = "Cotisation payée avec succès ! Montant: " . 
+                    number_format($montant, 0, ',', ' ') . " FCFA" . 
+                    ($penalite > 0 ? " + Pénalité: " . number_format($penalite, 0, ',', ' ') . " FCFA" : "") . 
+                    " | Total: " . number_format($total_a_payer, 0, ',', ' ') . " FCFA";
+                
+                // Redirection vers historique avec message de succès
+                header("Location: historique_cotisations.php?success=1");
+                exit();
+            }
+        } catch(Exception $e) {
+            $pdo->rollBack();
+            $_SESSION['message_error'] = "Erreur lors du paiement : " . $e->getMessage();
+            header("Location: cotisation.php?error=1");
+            exit();
         }
-        
-        $pdo->commit();
-        $message_success = "Cotisation payée avec succès !";
-    } catch(Exception $e) {
-        $pdo->rollBack();
-        $message_error = "Erreur lors du paiement : " . $e->getMessage();
+    } else {
+        $_SESSION['message_error'] = "Séance non trouvée ou vous n'avez pas accès.";
+        header("Location: cotisation.php?error=1");
+        exit();
     }
+}
+
+// Récupération des messages depuis la session (si existants)
+if (isset($_SESSION['message_success'])) {
+    $message_success = $_SESSION['message_success'];
+    unset($_SESSION['message_success']);
+}
+
+if (isset($_SESSION['message_error'])) {
+    $message_error = $_SESSION['message_error'];
+    unset($_SESSION['message_error']);
 }
 
 // Récupération des tontines du membre
 $stmt_tontines = $pdo->prepare("
     SELECT DISTINCT t.* 
     FROM tontine t
-    INNER JOIN beneficiaire b ON t.id_tontine = b.id_tontine
-    WHERE b.id_membre = ? AND t.statut = 'active'
+    INNER JOIN participation_tontine p ON t.id_tontine = p.id_tontine
+    WHERE p.id_membre = ? AND t.statut = 'active' AND p.statut = 'active'
     ORDER BY t.nom_tontine
 ");
 $stmt_tontines->execute([$user_id]);
@@ -889,6 +942,60 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
                 padding: 20px;
             }
         }
+        
+        /* Notification Styles */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 10000;
+            animation: slideInRight 0.3s ease-out;
+            max-width: 400px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+        
+        .notification.success {
+            background: linear-gradient(135deg, #10b981, #34d399);
+            color: white;
+            border-left: 4px solid #059669;
+        }
+        
+        .notification.error {
+            background: linear-gradient(135deg, #ef4444, #f87171);
+            color: white;
+            border-left: 4px solid #dc2626;
+        }
+        
+        .notification button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            margin-left: auto;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 <body>
@@ -928,6 +1035,10 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
                 <a href="cotisation.php" class="nav-item active">
                     <i class="fas fa-money-bill-wave"></i>
                     <span>Cotisations</span>
+                </a>
+                <a href="historique_cotisations.php" class="nav-item">
+                    <i class="fas fa-history"></i>
+                    <span>Historique</span>
                 </a>
                 <a href="credit.php" class="nav-item">
                     <i class="fas fa-credit-card"></i>
@@ -984,6 +1095,13 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
                         <div><?php echo htmlspecialchars($message_error); ?></div>
                     </div>
                 <?php endif; ?>
+                
+                <?php if (empty($tontines)): ?>
+                    <div class="alert alert-error">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <div>Vous n'êtes inscrit à aucune tontine active.</div>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <!-- Main Card -->
@@ -1011,50 +1129,58 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
 
                     <?php if ($id_tontine_selectionnee): ?>
                         <?php
+                        // Vérifier que la tontine existe
                         $stmt_tontine = $pdo->prepare("SELECT * FROM tontine WHERE id_tontine = ?");
                         $stmt_tontine->execute([$id_tontine_selectionnee]);
                         $tontine_active = $stmt_tontine->fetch();
-                        ?>
                         
-                        <div class="tontine-info-grid">
-                            <div class="info-card">
-                                <div class="info-icon">
-                                    <i class="fas fa-cube"></i>
-                                </div>
-                                <div class="info-label">Type de Tontine</div>
-                                <div class="info-value"><?= ucfirst($tontine_active['type_tontine']) ?></div>
+                        if (!$tontine_active): ?>
+                            <div class="empty-state">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <h3>Tontine non trouvée</h3>
+                                <p>La tontine sélectionnée n'existe pas ou vous n'y avez pas accès.</p>
                             </div>
-                            
-                            <div class="info-card">
-                                <div class="info-icon">
-                                    <i class="fas fa-coins"></i>
+                        <?php else: ?>
+                            <div class="tontine-info-grid">
+                                <div class="info-card">
+                                    <div class="info-icon">
+                                        <i class="fas fa-cube"></i>
+                                    </div>
+                                    <div class="info-label">Type de Tontine</div>
+                                    <div class="info-value"><?= ucfirst($tontine_active['type_tontine']) ?></div>
                                 </div>
-                                <div class="info-label">Montant Cotisation</div>
-                                <div class="info-value"><?= number_format($tontine_active['montant_cotisation'], 0, ',', ' ') ?> FCFA</div>
+                                
+                                <div class="info-card">
+                                    <div class="info-icon">
+                                        <i class="fas fa-coins"></i>
+                                    </div>
+                                    <div class="info-label">Montant Cotisation</div>
+                                    <div class="info-value"><?= number_format($tontine_active['montant_cotisation'], 0, ',', ' ') ?> FCFA</div>
+                                </div>
+                                
+                                <div class="info-card">
+                                    <div class="info-icon">
+                                        <i class="fas fa-calendar"></i>
+                                    </div>
+                                    <div class="info-label">Fréquence</div>
+                                    <div class="info-value"><?= ucfirst($tontine_active['frequence']) ?></div>
+                                </div>
+                                
+                                <div class="info-card">
+                                    <div class="info-icon">
+                                        <i class="fas fa-chart-line"></i>
+                                    </div>
+                                    <div class="info-label">Statut</div>
+                                    <div class="info-value" style="color: <?= $tontine_active['statut'] == 'active' ? 'var(--success)' : 'var(--warning)' ?>">
+                                        <?= ucfirst($tontine_active['statut']) ?>
+                                    </div>
+                                </div>
                             </div>
-                            
-                            <div class="info-card">
-                                <div class="info-icon">
-                                    <i class="fas fa-calendar"></i>
-                                </div>
-                                <div class="info-label">Fréquence</div>
-                                <div class="info-value"><?= ucfirst($tontine_active['frequence']) ?></div>
-                            </div>
-                            
-                            <div class="info-card">
-                                <div class="info-icon">
-                                    <i class="fas fa-chart-line"></i>
-                                </div>
-                                <div class="info-label">Statut</div>
-                                <div class="info-value" style="color: <?= $tontine_active['statut'] == 'active' ? 'var(--success)' : 'var(--warning)' ?>">
-                                    <?= ucfirst($tontine_active['statut']) ?>
-                                </div>
-                            </div>
-                        </div>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
 
-                <?php if ($id_tontine_selectionnee): ?>
+                <?php if ($id_tontine_selectionnee && $tontine_active): ?>
                     <?php
                     // Récupération des paramètres de pénalité
                     $stmt_param = $pdo->query("SELECT * FROM parametres_penalites WHERE type_penalite = 'cotisation_retard_hebdo' AND actif = 1");
@@ -1111,9 +1237,11 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
                                 } else {
                                     $statut = 'en-retard';
                                     $statut_label = 'En retard';
-                                    // Calcul de la pénalité
+                                    // Calcul correct de la pénalité
+                                    $jours_retard = max(0, $jours_retard);
                                     $semaines_retard = floor($jours_retard / $delai_jours);
                                     $penalite = ($tontine_active['montant_cotisation'] * $taux_penalite / 100) * $semaines_retard;
+                                    $penalite = max(0, $penalite);
                                     $total_en_retard++;
                                     $total_penalites += $penalite;
                                 }
@@ -1180,7 +1308,7 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
                                             </div>
                                         <?php elseif ($statut === 'en-retard' && !$seance['id_cotisation']): ?>
                                             <div class="payment-section">
-                                                <form method="POST">
+                                                <form method="POST" id="paymentForm_<?= $seance['id_seance'] ?>">
                                                     <input type="hidden" name="id_seance" value="<?= $seance['id_seance'] ?>">
                                                     <input type="hidden" name="montant" value="<?= $tontine_active['montant_cotisation'] ?>">
                                                     <input type="hidden" name="penalite" value="<?= $penalite ?>">
@@ -1242,7 +1370,7 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
                             </div>
                         </div>
                     <?php endif; ?>
-                <?php else: ?>
+                <?php elseif (!$id_tontine_selectionnee): ?>
                     <div class="empty-state">
                         <i class="fas fa-hand-holding-usd"></i>
                         <h3>Aucune tontine sélectionnée</h3>
@@ -1318,22 +1446,37 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
                 });
             });
 
-            // Confirmation de paiement
+            // Confirmation de paiement avec notification
             const paymentForms = document.querySelectorAll('form[method="POST"]');
             paymentForms.forEach(form => {
                 form.addEventListener('submit', function(e) {
+                    e.preventDefault(); // Empêcher l'envoi immédiat
+                    
                     const button = this.querySelector('button[type="submit"]');
                     const originalText = button.innerHTML;
+                    const idSeance = this.querySelector('input[name="id_seance"]').value;
                     
-                    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Traitement en cours...';
-                    button.disabled = true;
-                    
-                    setTimeout(() => {
-                        button.innerHTML = originalText;
-                        button.disabled = false;
-                    }, 3000);
+                    // Demander confirmation
+                    if (confirm("Êtes-vous sûr de vouloir effectuer ce paiement ?")) {
+                        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Traitement en cours...';
+                        button.disabled = true;
+                        
+                        // Soumettre le formulaire après 1 seconde pour l'animation
+                        setTimeout(() => {
+                            this.submit();
+                        }, 1000);
+                    }
                 });
             });
+            
+            // Afficher les messages de notification
+            <?php if (isset($message_success)): ?>
+                showNotification('success', '<?= addslashes($message_success) ?>');
+            <?php endif; ?>
+            
+            <?php if (isset($message_error)): ?>
+                showNotification('error', '<?= addslashes($message_error) ?>');
+            <?php endif; ?>
 
             // Auto-refresh pour les séances en retard
             setInterval(() => {
@@ -1347,6 +1490,25 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
             }, 5000);
         });
 
+        // Fonction pour afficher les notifications
+        function showNotification(type, message) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                <span>${message}</span>
+                <button onclick="this.parentElement.remove()">&times;</button>
+            `;
+            document.body.appendChild(notification);
+            
+            // Supprimer après 5 secondes
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+
         // Animation CSS pour le pulse
         const style = document.createElement('style');
         style.textContent = `
@@ -1354,6 +1516,17 @@ $id_tontine_selectionnee = $_GET['tontine'] ?? ($tontines[0]['id_tontine'] ?? nu
                 0% { opacity: 1; }
                 50% { opacity: 0.7; }
                 100% { opacity: 1; }
+            }
+            
+            @keyframes slideInRight {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
             }
         `;
         document.head.appendChild(style);

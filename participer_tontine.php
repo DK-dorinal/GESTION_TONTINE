@@ -1037,7 +1037,15 @@ foreach ($mes_tontines as $tontine) {
                                     </div>
                                     <div class="tontine-detail">
                                         <i class="fas fa-calendar-check"></i>
-                                        <span>Fin: <?php echo date('d/m/Y', strtotime($tontine['date_fin'])); ?></span>
+                                        <span>
+                                            Fin :
+                                            <?php
+                                            echo !empty($tontine['date_fin'])
+                                                ? date('d/m/Y', strtotime($tontine['date_fin']))
+                                                : '—';
+                                            ?>
+                                        </span>
+
                                     </div>
                                     <div class="tontine-detail">
                                         <i class="fas fa-calendar-check"></i>

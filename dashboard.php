@@ -22,7 +22,7 @@ if (!$user) {
 }
 
 // Vérifier l'inactivité (10 minutes)
-$timeout = 1200;
+$timeout = 120000;
 if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $timeout)) {
     session_unset();
     session_destroy();
@@ -68,11 +68,12 @@ try {
         $activites = $pdo->query($query)->fetchAll();
         $membres_recents = $pdo->query("SELECT * FROM membre ORDER BY date_inscription DESC LIMIT 5")->fetchAll();
     } else {
-        $stmt_tontines = $pdo->prepare("SELECT COUNT(DISTINCT t.id_tontine) 
-            FROM tontine t 
-            INNER JOIN beneficiaire b ON t.id_tontine = b.id_tontine 
-            WHERE b.id_membre = ?");
-        $stmt_tontines->execute([$user_id]);
+        // LOGIQUE : TOUS les membres participent aux tontines obligatoires
+        // 1. Nombre de tontines obligatoires actives
+        $stmt_tontines = $pdo->prepare("SELECT COUNT(*) 
+            FROM tontine 
+            WHERE statut = 'active' AND type_tontine = 'obligatoire'");
+        $stmt_tontines->execute();
         $mes_tontines_count = $stmt_tontines->fetchColumn();
 
         $stmt_cotisations = $pdo->prepare("SELECT COUNT(*) FROM cotisation WHERE id_membre = ?");
@@ -91,12 +92,24 @@ try {
         $stmt_montant_credit->execute([$user_id]);
         $montant_credit_total = $stmt_montant_credit->fetchColumn();
 
+        // 2. Nombre de gains dans les tontines
+        $stmt_gains_count = $pdo->prepare("SELECT COUNT(*) FROM beneficiaire WHERE id_membre = ?");
+        $stmt_gains_count->execute([$user_id]);
+        $gains_count = $stmt_gains_count->fetchColumn();
+
+        // 3. Montant total gagné
+        $stmt_montant_gagne = $pdo->prepare("SELECT COALESCE(SUM(montant_gagne), 0) FROM beneficiaire WHERE id_membre = ?");
+        $stmt_montant_gagne->execute([$user_id]);
+        $montant_total_gagne = $stmt_montant_gagne->fetchColumn();
+
         $stats = [
             'mes_tontines' => $mes_tontines_count,
             'mes_cotisations' => $mes_cotisations_count,
             'montant_total_cotise' => $montant_total_cotise,
             'mes_credits' => $mes_credits_count,
             'montant_credit_total' => $montant_credit_total,
+            'gains_count' => $gains_count,
+            'montant_total_gagne' => $montant_total_gagne,
         ];
 
         $query = "
@@ -105,21 +118,29 @@ try {
             UNION ALL
             (SELECT 'credit' as type, CONCAT('Crédit #', id_credit) as nom, date_emprunt as date, montant 
              FROM credit WHERE id_membre = ? ORDER BY date_emprunt DESC LIMIT 5)
+            UNION ALL
+            (SELECT 'gain' as type, CONCAT('Gain tontine #', id_tontine) as nom, date_gain as date, montant_gagne as montant 
+             FROM beneficiaire WHERE id_membre = ? ORDER BY date_gain DESC LIMIT 5)
             ORDER BY date DESC LIMIT 10
         ";
         $stmt = $pdo->prepare($query);
-        $stmt->execute([$user_id, $user_id]);
+        $stmt->execute([$user_id, $user_id, $user_id]);
         $activites = $stmt->fetchAll();
 
+        // Récupérer les tontines obligatoires actives avec les gains éventuels
         $stmt_tontines_user = $pdo->prepare("
-            SELECT t.*, b.montant_gagne, b.date_gain 
+            SELECT t.*, 
+                   b.montant_gagne, 
+                   b.date_gain,
+                   (SELECT COUNT(*) FROM participation_tontine pt WHERE pt.id_tontine = t.id_tontine AND pt.statut = 'active') as participants_actuels,
+                   (SELECT SUM(c.montant) FROM cotisation c INNER JOIN seance s ON c.id_seance = s.id_seance WHERE s.id_tontine = t.id_tontine AND c.id_membre = ?) as montant_paye
             FROM tontine t 
-            INNER JOIN beneficiaire b ON t.id_tontine = b.id_tontine 
-            WHERE b.id_membre = ?
+            LEFT JOIN beneficiaire b ON t.id_tontine = b.id_tontine AND b.id_membre = ?
+            WHERE t.statut = 'active' AND t.type_tontine = 'obligatoire'
             ORDER BY t.date_debut DESC
             LIMIT 5
         ");
-        $stmt_tontines_user->execute([$user_id]);
+        $stmt_tontines_user->execute([$user_id, $user_id]);
         $mes_tontines = $stmt_tontines_user->fetchAll();
     }
 } catch (PDOException $e) {
@@ -143,6 +164,8 @@ try {
             'montant_total_cotise' => 0,
             'mes_credits' => 0,
             'montant_credit_total' => 0,
+            'gains_count' => 0,
+            'montant_total_gagne' => 0,
         ];
     }
     $activites = [];
@@ -794,6 +817,38 @@ $is_mobile = isMobile();
             margin-bottom: 12px;
         }
 
+        .tontine-gain {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .gain-label {
+            font-size: 0.85rem;
+            color: #f59e0b;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .gain-amount {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #10b981;
+        }
+
+        .tontine-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-light);
+            margin-top: 8px;
+        }
+
         /* System Card */
         .system-card {
             background: linear-gradient(135deg, var(--navy-blue), var(--dark-blue));
@@ -997,7 +1052,7 @@ $is_mobile = isMobile();
             gap: 8px;
         }
 
-        /* Mobile Navigation */
+        /* Mobile Navigation - MODIFIÉ POUR SCROLL */
         .mobile-nav {
             display: none;
             position: fixed;
@@ -1008,15 +1063,26 @@ $is_mobile = isMobile();
             backdrop-filter: blur(10px);
             border-top: 2px solid var(--accent-gold);
             z-index: 1000;
-            height: 70px;
-            padding: 0 10px;
+            height: 80px;
+            padding: 10px 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .mobile-nav::-webkit-scrollbar {
+            display: none;
         }
 
         .mobile-nav-container {
             display: flex;
-            justify-content: space-around;
             align-items: center;
             height: 100%;
+            padding: 0 15px;
+            gap: 15px;
+            min-width: fit-content;
         }
 
         .mobile-nav-item {
@@ -1024,28 +1090,80 @@ $is_mobile = isMobile();
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 8px 4px;
+            padding: 8px 12px;
             color: rgba(255, 255, 255, 0.6);
             text-decoration: none;
             transition: var(--transition);
-            border-radius: 8px;
-            min-width: 60px;
+            border-radius: 10px;
+            min-width: 80px;
+            flex-shrink: 0;
+            position: relative;
         }
 
         .mobile-nav-item:hover,
         .mobile-nav-item.active {
             color: var(--accent-gold);
             background: rgba(212, 175, 55, 0.15);
+            transform: translateY(-2px);
         }
 
         .mobile-nav-icon {
             font-size: 22px;
             margin-bottom: 4px;
+            transition: var(--transition);
+        }
+
+        .mobile-nav-item:hover .mobile-nav-icon {
+            transform: scale(1.1);
         }
 
         .mobile-nav-text {
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 600;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        /* Badge pour les notifications */
+        .nav-badge {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        /* Indicateur de scroll pour mobile */
+        .scroll-indicator {
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--accent-gold);
+            font-size: 20px;
+            opacity: 0.7;
+            animation: bounce 2s infinite;
+            display: none;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-5px); }
         }
 
         /* Empty State */
@@ -1089,7 +1207,7 @@ $is_mobile = isMobile();
             .main-content {
                 margin-left: 0;
                 width: 100%;
-                padding-bottom: 80px;
+                padding-bottom: 90px;
             }
 
             .mobile-nav {
@@ -1141,12 +1259,31 @@ $is_mobile = isMobile();
             .content-card {
                 padding: 20px;
             }
+
+            .mobile-nav-container {
+                gap: 12px;
+                padding: 0 10px;
+            }
+
+            .mobile-nav-item {
+                min-width: 70px;
+                padding: 6px 10px;
+            }
+
+            .mobile-nav-icon {
+                font-size: 20px;
+            }
+
+            .mobile-nav-text {
+                font-size: 10px;
+            }
         }
 
         /* Small Mobile (480px) */
         @media (max-width: 480px) {
             .main-content {
                 padding: 15px;
+                padding-bottom: 90px;
             }
 
             .header-title h1 {
@@ -1174,12 +1311,22 @@ $is_mobile = isMobile();
                 font-size: 1.5rem;
             }
 
-            .mobile-nav-text {
-                font-size: 9px;
+            .mobile-nav-container {
+                gap: 8px;
+                padding: 0 8px;
+            }
+
+            .mobile-nav-item {
+                min-width: 65px;
+                padding: 5px 8px;
             }
 
             .mobile-nav-icon {
-                font-size: 20px;
+                font-size: 18px;
+            }
+
+            .mobile-nav-text {
+                font-size: 9px;
             }
         }
 
@@ -1195,12 +1342,22 @@ $is_mobile = isMobile();
                 padding: 8px 12px;
             }
 
-            .mobile-nav-text {
-                font-size: 8px;
+            .mobile-nav-container {
+                gap: 6px;
+                padding: 0 6px;
+            }
+
+            .mobile-nav-item {
+                min-width: 60px;
+                padding: 4px 6px;
             }
 
             .mobile-nav-icon {
-                font-size: 18px;
+                font-size: 16px;
+            }
+
+            .mobile-nav-text {
+                font-size: 8px;
             }
         }
     </style>
@@ -1248,7 +1405,11 @@ $is_mobile = isMobile();
                         <i class="fas fa-credit-card"></i>
                         <span>Crédits</span>
                     </a>
-                    <a href="projets_fiac.php" class="nav-item active">
+                    <a href="gestion_credits.php" class="nav-item">
+                        <i class="fas fa-credit-card"></i>
+                        <span>Gestion Crédits</span>
+                    </a>
+                    <a href="projets_fiac.php" class="nav-item">
                         <i class="fas fa-project-diagram"></i>
                         <span>Projets FIAC</span>
                     </a>
@@ -1330,15 +1491,22 @@ $is_mobile = isMobile();
                         <div class="action-icon">
                             <i class="fas fa-money-bill-wave"></i>
                         </div>
-                        <h3 class="action-title">Mes Cotisations</h3>
-                        <p class="action-subtitle">Voir et payer</p>
+                        <h3 class="action-title">Cotiser</h3>
+                        <p class="action-subtitle">Payer cotisations</p>
                     </a>
                     <a href="seances.php" class="action-card">
                         <div class="action-icon">
                             <i class="fas fa-hand-holding-usd"></i>
                         </div>
                         <h3 class="action-title">Mes Tontines</h3>
-                        <p class="action-subtitle">Participations</p>
+                        <p class="action-subtitle">Toutes les tontines</p>
+                    </a>
+                    <a href="historique_cotisations.php" class="action-card">
+                        <div class="action-icon">
+                            <i class="fas fa-hand-holding-usd"></i>
+                        </div>
+                        <h3 class="action-title">Mes cotisations</h3>
+                        <p class="action-subtitle">historiques cotisations</p>
                     </a>
                     <a href="demander_credit.php" class="action-card">
                         <div class="action-icon">
@@ -1422,20 +1590,21 @@ $is_mobile = isMobile();
                         </div>
                     </div>
                 <?php else: ?>
+                    <!-- NOUVELLES STATISTIQUES POUR MEMBRES -->
                     <div class="stat-card">
                         <div class="stat-header">
                             <div class="stat-icon" style="background: linear-gradient(135deg, #667eea, #764ba2);">
                                 <i class="fas fa-hand-holding-usd"></i>
                             </div>
                             <span class="stat-badge" style="background: #dbeafe; color: #1e40af;">
-                                Participations
+                                Obligatoires
                             </span>
                         </div>
                         <div class="stat-value"><?php echo isset($stats['mes_tontines']) ? $stats['mes_tontines'] : 0; ?></div>
                         <div class="stat-label">Mes Tontines</div>
                         <div class="stat-footer" style="color: #3b82f6;">
                             <i class="fas fa-check-circle"></i>
-                            <span>Participations actives</span>
+                            <span>Toutes les tontines obligatoires</span>
                         </div>
                     </div>
 
@@ -1482,21 +1651,11 @@ $is_mobile = isMobile();
                                 Gains
                             </span>
                         </div>
-                        <div class="stat-value">
-                            <?php
-                            if (isset($pdo)) {
-                                $stmt_gains = $pdo->prepare("SELECT COUNT(*) FROM beneficiaire WHERE id_membre = ?");
-                                $stmt_gains->execute([$user_id]);
-                                echo $stmt_gains->fetchColumn();
-                            } else {
-                                echo "0";
-                            }
-                            ?>
-                        </div>
+                        <div class="stat-value"><?php echo isset($stats['gains_count']) ? $stats['gains_count'] : 0; ?></div>
                         <div class="stat-label">Gains Tontines</div>
                         <div class="stat-footer" style="color: #eab308;">
                             <i class="fas fa-gift"></i>
-                            <span>Tontines gagnées</span>
+                            <strong><?php echo isset($stats['montant_total_gagne']) ? number_format($stats['montant_total_gagne'], 0, ',', ' ') : 0; ?> FCFA</strong>
                         </div>
                     </div>
                 <?php endif; ?>
@@ -1512,7 +1671,7 @@ $is_mobile = isMobile();
                                 <i class="fas fa-history"></i>
                                 <?php echo $is_admin ? 'Activités Récentes' : 'Mes Activités'; ?>
                             </h3>
-                            <a href="#" class="view-all-btn">
+                            <a href="historique_cotisations.php" class="view-all-btn">
                                 Voir tout <i class="fas fa-arrow-right"></i>
                             </a>
                         </div>
@@ -1539,9 +1698,17 @@ $is_mobile = isMobile();
                                                                                                 elseif ($activite['type'] == 'tontine') echo 'linear-gradient(135deg, #f59e0b, #d97706)';
                                                                                                 elseif ($activite['type'] == 'seance') echo 'linear-gradient(135deg, #10b981, #059669)';
                                                                                                 elseif ($activite['type'] == 'cotisation') echo 'linear-gradient(135deg, #a855f7, #9333ea)';
+                                                                                                elseif ($activite['type'] == 'credit') echo 'linear-gradient(135deg, #f59e0b, #d97706)';
+                                                                                                elseif ($activite['type'] == 'gain') echo 'linear-gradient(135deg, #eab308, #d97706)';
                                                                                                 else echo 'linear-gradient(135deg, #6b7280, #4b5563)';
                                                                                                 ?>;">
-                                                        <?php echo substr(ucfirst($activite['type']), 0, 3); ?>
+                                                        <?php 
+                                                        if ($activite['type'] == 'gain') {
+                                                            echo 'Gain';
+                                                        } else {
+                                                            echo substr(ucfirst($activite['type']), 0, 3);
+                                                        }
+                                                        ?>
                                                     </span>
                                                 </td>
                                                 <td style="font-weight: 600; color: var(--text-dark);">
@@ -1552,7 +1719,7 @@ $is_mobile = isMobile();
                                                     <?php echo date('d/m/Y', strtotime($activite['date'])); ?>
                                                 </td>
                                                 <?php if (!$is_admin && isset($activite['montant'])): ?>
-                                                    <td style="font-weight: 700; color: #10b981;">
+                                                    <td style="font-weight: 700; color: <?php echo $activite['type'] == 'gain' ? '#10b981' : '#3b82f6'; ?>;">
                                                         <?php echo number_format($activite['montant'], 0, ',', ' '); ?> FCFA
                                                     </td>
                                                 <?php endif; ?>
@@ -1638,11 +1805,21 @@ $is_mobile = isMobile();
                                                 <i class="fas fa-calendar"></i>
                                                 <?php echo date('d/m/Y', strtotime($tontine['date_debut'])); ?>
                                             </div>
+                                            <div class="tontine-info">
+                                                <span>
+                                                    <i class="fas fa-users"></i>
+                                                    <?php echo isset($tontine['participants_actuels']) ? $tontine['participants_actuels'] : 0; ?> participants
+                                                </span>
+                                                <span>
+                                                    <i class="fas fa-money-bill"></i>
+                                                    <?php echo isset($tontine['montant_paye']) && $tontine['montant_paye'] > 0 ? number_format($tontine['montant_paye'], 0, ',', ' ') . ' F payés' : 'Aucun paiement'; ?>
+                                                </span>
+                                            </div>
                                             <?php if ($tontine['montant_gagne']): ?>
                                                 <div class="tontine-gain">
                                                     <span class="gain-label">
                                                         <i class="fas fa-trophy"></i>
-                                                        Gagné !
+                                                        Gagné le <?php echo date('d/m/Y', strtotime($tontine['date_gain'])); ?> !
                                                     </span>
                                                     <span class="gain-amount">
                                                         <?php echo number_format($tontine['montant_gagne'], 0, ',', ' '); ?> FCFA
@@ -1654,7 +1831,7 @@ $is_mobile = isMobile();
                                 <?php else: ?>
                                     <div class="empty-state">
                                         <i class="fas fa-hand-holding-usd"></i>
-                                        <p>Aucune tontine active</p>
+                                        <p>Aucune tontine obligatoire active</p>
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -1674,7 +1851,7 @@ $is_mobile = isMobile();
                         <div class="system-item">
                             <span class="system-label">Statut</span>
                             <span class="status-online">
-                                <span class="status-dot"></span>
+                                <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%; margin-right: 5px;"></span>
                                 <strong>En ligne</strong>
                             </span>
                         </div>
@@ -1746,13 +1923,14 @@ $is_mobile = isMobile();
         </div>
     </div>
 
-    <!-- Mobile Navigation -->
+    <!-- Mobile Navigation - MODIFIÉ AVEC SCROLL -->
     <nav class="mobile-nav">
         <div class="mobile-nav-container">
             <a href="dashboard.php" class="mobile-nav-item active">
                 <i class="fas fa-tachometer-alt mobile-nav-icon"></i>
                 <span class="mobile-nav-text">Dashboard</span>
             </a>
+            
             <?php if ($is_admin): ?>
                 <a href="membre.php" class="mobile-nav-item">
                     <i class="fas fa-users mobile-nav-icon"></i>
@@ -1766,32 +1944,67 @@ $is_mobile = isMobile();
                     <i class="fas fa-calendar-alt mobile-nav-icon"></i>
                     <span class="mobile-nav-text">Séances</span>
                 </a>
-                <a href="#" class="mobile-nav-item" onclick="openShareModal()">
-                    <i class="fas fa-share-alt mobile-nav-icon"></i>
-                    <span class="mobile-nav-text">Partager</span>
-                </a>
-            <?php else: ?>
                 <a href="cotisation.php" class="mobile-nav-item">
                     <i class="fas fa-money-bill-wave mobile-nav-icon"></i>
                     <span class="mobile-nav-text">Cotisations</span>
-                </a>
-                <a href="seances.php" class="mobile-nav-item">
-                    <i class="fas fa-hand-holding-usd mobile-nav-icon"></i>
-                    <span class="mobile-nav-text">Tontines</span>
                 </a>
                 <a href="credit.php" class="mobile-nav-item">
                     <i class="fas fa-credit-card mobile-nav-icon"></i>
                     <span class="mobile-nav-text">Crédits</span>
                 </a>
-                <a href="#" class="mobile-nav-item" onclick="openShareModal()">
-                    <i class="fas fa-share-alt mobile-nav-icon"></i>
-                    <span class="mobile-nav-text">Partager</span>
+                <a href="gestion_credits.php" class="mobile-nav-item">
+                    <i class="fas fa-credit-card mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Gestion Crédits</span>
+                </a>
+                <a href="projets_fiac.php" class="mobile-nav-item">
+                    <i class="fas fa-project-diagram mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Projets FIAC</span>
+                </a>
+                <a href="rapports.php" class="mobile-nav-item">
+                    <i class="fas fa-chart-line mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Rapports</span>
+                </a>
+            <?php else: ?>
+                <a href="cotisation.php" class="mobile-nav-item">
+                    <i class="fas fa-money-bill-wave mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Cotiser</span>
+                    <span class="nav-badge"><?php echo isset($stats['mes_cotisations']) ? $stats['mes_cotisations'] : 0; ?></span>
+                </a>
+                <a href="seances.php" class="mobile-nav-item">
+                    <i class="fas fa-hand-holding-usd mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Tontines</span>
+                    <span class="nav-badge"><?php echo isset($stats['mes_tontines']) ? $stats['mes_tontines'] : 0; ?></span>
+                </a>
+                <a href="demander_credit.php" class="mobile-nav-item">
+                    <i class="fas fa-credit-card mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Demander Crédit</span>
+                </a>
+                <a href="historique.php" class="mobile-nav-item">
+                    <i class="fas fa-history mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Historique</span>
+                </a>
+                <a href="profile.php" class="mobile-nav-item">
+                    <i class="fas fa-user mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Profil</span>
+                </a>
+                <a href="parametres.php" class="mobile-nav-item">
+                    <i class="fas fa-cog mobile-nav-icon"></i>
+                    <span class="mobile-nav-text">Paramètres</span>
                 </a>
             <?php endif; ?>
+            
+            <a href="#" class="mobile-nav-item" onclick="openShareModal()">
+                <i class="fas fa-share-alt mobile-nav-icon"></i>
+                <span class="mobile-nav-text">Partager</span>
+            </a>
             <a href="logout.php" class="mobile-nav-item">
                 <i class="fas fa-sign-out-alt mobile-nav-icon"></i>
-                <span class="mobile-nav-text">Sortir</span>
+                <span class="mobile-nav-text">Déconnexion</span>
             </a>
+        </div>
+        <div class="scroll-indicator">
+            <i class="fas fa-chevron-left"></i>
+            <i class="fas fa-chevron-right"></i>
         </div>
     </nav>
 
@@ -1908,6 +2121,42 @@ $is_mobile = isMobile();
                     this.style.boxShadow = 'none';
                 });
             });
+
+            // Gérer le scroll de la navigation mobile
+            const mobileNav = document.querySelector('.mobile-nav');
+            const mobileNavContainer = document.querySelector('.mobile-nav-container');
+            
+            if (mobileNav && mobileNavContainer) {
+                // Masquer l'indicateur de scroll si tout tient
+                if (mobileNavContainer.scrollWidth <= mobileNav.clientWidth) {
+                    document.querySelector('.scroll-indicator').style.display = 'none';
+                }
+                
+                // Animation au scroll
+                mobileNav.addEventListener('scroll', function() {
+                    const indicator = document.querySelector('.scroll-indicator');
+                    if (this.scrollLeft > 10) {
+                        indicator.innerHTML = '<i class="fas fa-chevron-left"></i> <i class="fas fa-chevron-right"></i>';
+                    }
+                });
+            }
+
+            // Effet de clic sur les boutons mobiles
+            const mobileNavItems = document.querySelectorAll('.mobile-nav-item');
+            mobileNavItems.forEach(item => {
+                item.addEventListener('click', function(e) {
+                    // Retirer la classe active de tous les éléments
+                    mobileNavItems.forEach(i => i.classList.remove('active'));
+                    // Ajouter la classe active à l'élément cliqué
+                    this.classList.add('active');
+                    
+                    // Animation de feedback
+                    this.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        this.style.transform = 'scale(1)';
+                    }, 150);
+                });
+            });
         });
 
         // Gérer la déconnexion
@@ -1930,6 +2179,51 @@ $is_mobile = isMobile();
                 }
             });
         });
+
+        // Gérer le scroll horizontal sur mobile
+        let isDown = false;
+        let startX;
+        let scrollLeft;
+        const slider = document.querySelector('.mobile-nav');
+
+        if (slider) {
+            slider.addEventListener('mousedown', (e) => {
+                isDown = true;
+                startX = e.pageX - slider.offsetLeft;
+                scrollLeft = slider.scrollLeft;
+            });
+
+            slider.addEventListener('mouseleave', () => {
+                isDown = false;
+            });
+
+            slider.addEventListener('mouseup', () => {
+                isDown = false;
+            });
+
+            slider.addEventListener('mousemove', (e) => {
+                if (!isDown) return;
+                e.preventDefault();
+                const x = e.pageX - slider.offsetLeft;
+                const walk = (x - startX) * 2;
+                slider.scrollLeft = scrollLeft - walk;
+            });
+
+            // Gestion du touch pour mobile
+            let touchStartX = 0;
+            let scrollLeftTouch = 0;
+
+            slider.addEventListener('touchstart', (e) => {
+                touchStartX = e.touches[0].pageX;
+                scrollLeftTouch = slider.scrollLeft;
+            });
+
+            slider.addEventListener('touchmove', (e) => {
+                const x = e.touches[0].pageX;
+                const walk = (x - touchStartX) * 2;
+                slider.scrollLeft = scrollLeftTouch - walk;
+            });
+        }
     </script>
 </body>
 
